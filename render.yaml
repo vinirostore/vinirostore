@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: vini-ro-services
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://your-netlify-site.netlify.app
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://your-netlify-site.netlify.app
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://your-render-service.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: NEXTAUTH_URL
+        value: https://your-render-service.onrender.com
