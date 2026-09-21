@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ShopStateProvider } from "@/components/shop-state";
 import { AuthStateProvider } from "@/components/auth-state";
+import { LoadingFeedback } from "@/components/loading-feedback";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-white text-slate-900">
+        <LoadingFeedback />
         <AuthStateProvider>
           <ShopStateProvider>{children}</ShopStateProvider>
         </AuthStateProvider>

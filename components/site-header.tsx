@@ -76,15 +76,15 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-2 sm:gap-3 md:flex">
-          <Link href={accountHref} className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-white/25 hover:bg-white/10 lg:inline-flex">
+          <Link href={accountHref} className="header-action-button inline-flex rounded-full px-4 py-2.5 text-sm font-medium transition">
             Account
           </Link>
-          <Link href="/wishlist" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-white/25 hover:bg-white/10">
+          <Link href="/wishlist" className="header-action-button inline-flex rounded-full px-4 py-2.5 text-sm font-medium transition">
             Wishlist ({wishlist.length})
           </Link>
-          <Link href="/cart" className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-slate-100">
+          <Link href="/cart" className="header-action-button inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition">
             Cart
-            <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">{cartCount}</span>
+            <span className="header-action-count rounded-full px-2 py-0.5 text-[10px] font-semibold">{cartCount}</span>
           </Link>
         </div>
 
