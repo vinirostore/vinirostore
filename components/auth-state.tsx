@@ -23,6 +23,8 @@ type AuthState = {
   isAdminAuthenticated: boolean;
   user: AccountUser | null;
   login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
+  requestEmailOtp: (email: string) => Promise<{ error?: string }>;
+  verifyEmailOtp: (email: string, token: string) => Promise<{ error?: string }>;
   registerAccount: (name: string, email: string, password: string, phone?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
   loginAdminAccess: () => void;
   logout: () => void;
@@ -131,6 +133,28 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   useEffect(() => {
+    const applySupabaseSession = async () => {
+      if (!supabase) return;
+
+      const { data } = await supabase.auth.getSession();
+      const sessionUser = data.session?.user;
+      if (!sessionUser) return;
+
+      const metadata = sessionUser.user_metadata || {};
+      const nextUser: AccountUser = {
+        id: sessionUser.id,
+        name: String(metadata.name || "Customer"),
+        email: normalizeEmail(sessionUser.email || ""),
+        phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+        createdAt: sessionUser.created_at,
+      };
+
+      window.localStorage.setItem(AUTH_KEY, "true");
+      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      setUser(nextUser);
+      setIsAuthenticated(true);
+    };
+
     const syncAuthState = () => {
       const currentUser = readUserState();
       setUser(currentUser);
@@ -139,6 +163,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     };
 
     syncAuthState();
+    void applySupabaseSession();
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key === USER_KEY || event.key === AUTH_KEY || event.key === ADMIN_AUTH_KEY) {
@@ -230,6 +255,45 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       setIsAdminAuthenticated(false);
       return {};
     },
+    requestEmailOtp: async (email) => {
+      if (!supabase) return { error: "Email OTP is not configured on this website." };
+
+      const { error } = await supabase.auth.signInWithOtp({
+        email: normalizeEmail(email),
+        options: {
+          shouldCreateUser: false,
+        },
+      });
+
+      return error ? { error: error.message } : {};
+    },
+    verifyEmailOtp: async (email, token) => {
+      if (!supabase) return { error: "Email OTP is not configured on this website." };
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: normalizeEmail(email),
+        token: token.trim(),
+        type: "email",
+      });
+
+      if (error || !data.user) return { error: error?.message || "The verification code is invalid or expired." };
+
+      const metadata = data.user.user_metadata || {};
+      const nextUser: AccountUser = {
+        id: data.user.id,
+        name: String(metadata.name || "Customer"),
+        email: normalizeEmail(data.user.email || email),
+        phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+        createdAt: data.user.created_at,
+      };
+
+      window.localStorage.setItem(AUTH_KEY, "true");
+      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      setUser(nextUser);
+      setIsAuthenticated(true);
+      setIsAdminAuthenticated(false);
+      return {};
+    },
     registerAccount: async (name, email, password, phone) => {
       const normalizedEmail = normalizeEmail(email);
       const sanitizedName = name.trim() || "Customer";
@@ -241,6 +305,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           email: normalizedEmail,
           password,
           options: {
+            emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
             data: {
               name: sanitizedName,
               phone: normalizedPhone,
