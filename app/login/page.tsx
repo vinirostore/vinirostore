@@ -5,15 +5,15 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { ADMIN_EMAIL, ADMIN_PASSWORD, readStoredAccounts, useAuthState } from "@/components/auth-state";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, useAuthState } from "@/components/auth-state";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuthState();
+  const { login, loginAdminAccess } = useAuthState();
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const email = String(formData.get("email") ?? "").trim();
@@ -31,25 +31,17 @@ export default function LoginPage() {
         return;
       }
 
-      login(ADMIN_EMAIL, "VINI RO Admin");
+      loginAdminAccess();
       router.push("/admin-access");
       return;
     }
 
-    const storedAccounts = readStoredAccounts();
-    const matchedAccount = storedAccounts.find((account) => account.email.toLowerCase() === normalizedEmail);
-
-    if (!matchedAccount) {
-      setError("No account found for this email. Please create an account first.");
+    const result = await login(email, undefined, undefined, undefined, password);
+    if (result.error) {
+      setError(result.error.includes("Invalid login credentials") ? "No account found for this email or the password is incorrect." : result.error);
       return;
     }
 
-    if (matchedAccount.password !== password) {
-      setError("Incorrect password. Please try again.");
-      return;
-    }
-
-    login(matchedAccount.email, matchedAccount.name);
     router.push("/account");
   }
 

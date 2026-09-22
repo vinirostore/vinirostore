@@ -23,7 +23,6 @@ const mobileNavItems = [
 const mobileServiceItems = [
   { label: "Repair", href: "/services/repair" },
   { label: "General Service", href: "/services/general-service" },
-  { label: "Installation", href: "/services/installation" },
   { label: "Maintenance", href: "/services/maintenance" },
   { label: "AMC", href: "/services/amc" },
   { label: "Other RO Support", href: "/services/other-ro-support" },

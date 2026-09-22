@@ -1,23 +1,29 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export type AccountUser = {
+  id?: string;
   name: string;
   email: string;
   phone?: string;
+  createdAt?: string;
 };
 
 export type StoredAccount = AccountUser & {
   password: string;
+  addresses?: Array<{ id: string; label: string; line1: string; city: string; state: string; pincode: string; phone: string; isDefault?: boolean; createdAt?: string; }>;
+  notifications?: Record<string, boolean>;
+  paymentPreferences?: { method: string; upiId?: string; cardLabel?: string; };
 };
 
 type AuthState = {
   isAuthenticated: boolean;
   isAdminAuthenticated: boolean;
   user: AccountUser | null;
-  login: (email: string, name?: string, phone?: string) => void;
-  registerAccount: (name: string, email: string, password: string, phone?: string) => void;
+  login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
+  registerAccount: (name: string, email: string, password: string, phone?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
   loginAdminAccess: () => void;
   logout: () => void;
 };
@@ -33,8 +39,23 @@ export const ADMIN_PASSWORD = "vinirostore@2020";
 export const ADMIN_PHONE = "9104881806";
 export const ADMIN_BIRTHDATE = "26-07-2007";
 
-function normalizeEmail(email: string) {
+export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+export function normalizeIndianPhone(phone?: string) {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`.trim();
+  if (digits.length === 12 && digits.startsWith("91")) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`.trim();
+  return phone.trim();
+}
+
+export function isValidIndianPhone(phone?: string) {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 12 && digits.startsWith("91"));
 }
 
 export function readStoredAccounts(): StoredAccount[] {
@@ -51,12 +72,29 @@ export function readStoredAccounts(): StoredAccount[] {
   }
 }
 
-function writeStoredAccounts(accounts: StoredAccount[]) {
+export function writeStoredAccounts(accounts: StoredAccount[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
 }
 
-function readUserState(): AccountUser | null {
+export function getStoredAccountByEmail(email: string): StoredAccount | undefined {
+  return readStoredAccounts().find((account) => account.email.toLowerCase() === normalizeEmail(email));
+}
+
+export function saveStoredAccount(account: StoredAccount) {
+  const accounts = readStoredAccounts();
+  const normalizedEmail = normalizeEmail(account.email);
+  const existingIndex = accounts.findIndex((item) => normalizeEmail(item.email) === normalizedEmail);
+
+  const nextAccounts = existingIndex >= 0
+    ? accounts.map((item) => normalizeEmail(item.email) === normalizedEmail ? { ...item, ...account } : item)
+    : [...accounts, account];
+
+  writeStoredAccounts(nextAccounts);
+  return nextAccounts.find((item) => normalizeEmail(item.email) === normalizedEmail);
+}
+
+export function readUserState(): AccountUser | null {
   if (typeof window === "undefined") return null;
 
   try {
@@ -65,9 +103,11 @@ function readUserState(): AccountUser | null {
     const parsed = JSON.parse(raw) as AccountUser;
     if (!parsed?.email || !parsed?.name) return null;
     return {
+      id: parsed.id,
       name: parsed.name,
       email: normalizeEmail(parsed.email),
       phone: parsed.phone || undefined,
+      createdAt: parsed.createdAt || undefined,
     };
   } catch {
     window.localStorage.removeItem(USER_KEY);
@@ -114,47 +154,185 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated,
     isAdminAuthenticated,
     user,
-    login: (email, name, phone) => {
+    login: async (email, name, phone, createdAt, password) => {
       const normalizedEmail = normalizeEmail(email);
-      const nextUser = {
-        name: name?.trim() || "Customer",
+
+      if (supabase) {
+        const signInResult = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: password || "",
+        });
+        let authUser = signInResult.data.user;
+        let authError = signInResult.error;
+
+        if (authError) {
+          const legacyAccount = getStoredAccountByEmail(normalizedEmail);
+          if (legacyAccount && legacyAccount.password === password) {
+            const migration = await supabase.auth.signUp({
+              email: normalizedEmail,
+              password: password || "",
+              options: {
+                data: {
+                  name: legacyAccount.name,
+                  phone: legacyAccount.phone || "",
+                },
+              },
+            });
+
+            if (!migration.error && migration.data.user && migration.data.session) {
+              authUser = migration.data.user;
+              authError = null;
+            }
+          }
+        }
+
+        if (authError || !authUser) {
+          return { error: authError?.message || "Unable to sign in with this account." };
+        }
+
+        const metadata = authUser.user_metadata || {};
+        const nextUser: AccountUser = {
+          id: authUser.id,
+          name: String(metadata.name || name || "Customer"),
+          email: normalizeEmail(authUser.email || normalizedEmail),
+          phone: normalizeIndianPhone(String(metadata.phone || phone || "")) || undefined,
+          createdAt: authUser.created_at || createdAt || new Date().toISOString(),
+        };
+
+        window.localStorage.setItem(AUTH_KEY, "true");
+        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      }
+
+      const storedAccounts = readStoredAccounts();
+      const matchedAccount = storedAccounts.find((account) => normalizeEmail(account.email) === normalizedEmail);
+
+      const nextUser: AccountUser = {
+        id: matchedAccount?.id || `user-${Date.now()}`,
+        name: (name || matchedAccount?.name || "Customer").trim() || "Customer",
         email: normalizedEmail,
-        phone: phone?.trim() || undefined,
+        phone: normalizeIndianPhone(phone || matchedAccount?.phone) || undefined,
+        createdAt: createdAt || matchedAccount?.createdAt || new Date().toISOString(),
       };
+
+      if (matchedAccount && !matchedAccount.phone && nextUser.phone) {
+        const updatedAccount = { ...matchedAccount, phone: nextUser.phone };
+        saveStoredAccount(updatedAccount);
+      }
 
       window.localStorage.setItem(AUTH_KEY, "true");
       window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
       setUser(nextUser);
       setIsAuthenticated(true);
       setIsAdminAuthenticated(false);
+      return {};
     },
-    registerAccount: (name, email, password, phone) => {
+    registerAccount: async (name, email, password, phone) => {
       const normalizedEmail = normalizeEmail(email);
       const sanitizedName = name.trim() || "Customer";
-      const normalizedPhone = phone?.trim() || undefined;
-      const accounts = readStoredAccounts();
-      const nextAccounts = accounts.filter((account) => account.email !== normalizedEmail);
+      const normalizedPhone = normalizeIndianPhone(phone);
+      const createdAt = new Date().toISOString();
 
-      nextAccounts.push({
+      if (supabase) {
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              name: sanitizedName,
+              phone: normalizedPhone,
+            },
+          },
+        });
+
+        if (error) return { error: error.message };
+        if (!data.user) return { error: "The account could not be created. Please try again." };
+        if (!data.session) return { needsEmailConfirmation: true };
+
+        const nextUser: AccountUser = {
+          id: data.user.id,
+          name: sanitizedName,
+          email: normalizedEmail,
+          phone: normalizedPhone || undefined,
+          createdAt: data.user.created_at || createdAt,
+        };
+
+        window.localStorage.setItem(AUTH_KEY, "true");
+        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      }
+
+      const nextAccount: StoredAccount = {
+        id: `user-${Date.now()}`,
         name: sanitizedName,
         email: normalizedEmail,
         phone: normalizedPhone,
         password,
-      });
+        createdAt,
+        addresses: [],
+        notifications: { serviceUpdates: true, promos: true, orderStatus: true },
+        paymentPreferences: { method: "cashfree" },
+      };
 
-      writeStoredAccounts(nextAccounts);
+      const existingAccount = getStoredAccountByEmail(normalizedEmail);
+      if (existingAccount) {
+        const mergedAccount = {
+          ...existingAccount,
+          name: sanitizedName,
+          email: normalizedEmail,
+          phone: normalizedPhone || existingAccount.phone,
+          password: password || existingAccount.password,
+          createdAt: existingAccount.createdAt || createdAt,
+        };
+        saveStoredAccount(mergedAccount);
+      } else {
+        saveStoredAccount(nextAccount);
+      }
 
-      const nextUser = { name: sanitizedName, email: normalizedEmail, phone: normalizedPhone };
+      const persistedAccount = getStoredAccountByEmail(normalizedEmail) || nextAccount;
+      const nextUser: AccountUser = {
+        id: persistedAccount.id,
+        name: sanitizedName,
+        email: normalizedEmail,
+        phone: normalizedPhone || persistedAccount.phone,
+        createdAt: persistedAccount.createdAt || createdAt,
+      };
+
+      try {
+        const { supabase } = require("@/lib/supabase");
+        if (supabase) {
+          void supabase.from("profiles").upsert({
+            id: nextUser.id,
+            email: normalizedEmail,
+            full_name: sanitizedName,
+            phone: normalizedPhone || persistedAccount.phone,
+            created_at: persistedAccount.createdAt || createdAt,
+          }, { onConflict: "email" });
+        }
+      } catch {
+        // ignore database sync issues and use local state as source of truth
+      }
+
       window.localStorage.setItem(AUTH_KEY, "true");
       window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
       setUser(nextUser);
       setIsAuthenticated(true);
       setIsAdminAuthenticated(false);
+      return {};
     },
     loginAdminAccess: () => {
-      const nextUser = {
+      const nextUser: AccountUser = {
+        id: "admin-vini-ro",
         name: "VINI RO Admin",
         email: "vinirostore@gmail.com",
+        phone: ADMIN_PHONE,
+        createdAt: new Date().toISOString(),
       };
 
       window.localStorage.setItem(AUTH_KEY, "true");

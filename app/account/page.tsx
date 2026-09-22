@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { businessConfig } from "@/lib/site-config";
-import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
+import { ADMIN_EMAIL, getStoredAccountByEmail, useAuthState } from "@/components/auth-state";
 
 const accountSections = [
   { label: "My Orders", value: "2 active orders" },
@@ -18,6 +18,7 @@ const accountSections = [
 export default function AccountPage() {
   const router = useRouter();
   const { isAuthenticated, isAdminAuthenticated, logout, user } = useAuthState();
+  const storedAccount = user ? getStoredAccountByEmail(user.email) : undefined;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -37,8 +38,11 @@ export default function AccountPage() {
   const profile = {
     name: user.name || "Customer",
     email: user.email || businessConfig.email,
-    phone: user.phone || businessConfig.phone,
-    memberSince: "2020",
+    phone: user.phone || storedAccount?.phone || businessConfig.phone,
+    memberSince: storedAccount?.createdAt ? new Date(storedAccount.createdAt).getFullYear() : new Date().getFullYear(),
+    addresses: storedAccount?.addresses ?? [],
+    notifications: storedAccount?.notifications ?? { serviceUpdates: true, promos: true, orderStatus: true },
+    paymentPreferences: storedAccount?.paymentPreferences ?? { method: "cashfree" },
   };
 
   const initials = profile.name
@@ -109,10 +113,10 @@ export default function AccountPage() {
             <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_20px_40px_rgba(15,23,42,0.04)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Account settings</p>
               <ul className="mt-5 space-y-3 text-sm text-slate-700">
-                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Profile details</li>
-                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Saved addresses</li>
-                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Payment preferences</li>
-                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Notifications</li>
+                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Profile details: {profile.name}</li>
+                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Saved addresses: {profile.addresses.length ? `${profile.addresses.length} saved` : "None yet"}</li>
+                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Payment preferences: {profile.paymentPreferences.method}</li>
+                <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Notifications: {Object.values(profile.notifications).filter(Boolean).length} enabled</li>
               </ul>
             </div>
 

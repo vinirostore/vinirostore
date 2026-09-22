@@ -646,11 +646,25 @@ export async function getProductBySlugFromStore(slug: string): Promise<Product |
 export const serviceCatalog = [
   { slug: "repair", name: "Repair", description: "Diagnostics and repair for RO systems." },
   { slug: "general-service", name: "General Service", description: "Routine cleaning and performance checks." },
-  { slug: "installation", name: "Installation", description: "New unit installation and setup support." },
   { slug: "maintenance", name: "Maintenance", description: "Scheduled upkeep and part replacement." },
   { slug: "amc", name: "AMC", description: "Annual maintenance contract for eligible Ahmedabad customers." },
   { slug: "other-ro-support", name: "Other RO Support", description: "Additional RO support and troubleshooting." },
 ];
+
+export function calculateOrderSummary(cart: Array<{ product: Product; quantity: number }>) {
+  const subtotal = cart.reduce((total, line) => total + line.product.price * line.quantity, 0);
+  const gst = subtotal * 0.18;
+  const shipping = subtotal > 0 && subtotal < 5000 ? 199 : 0;
+  const grandTotal = subtotal + gst + shipping;
+
+  return {
+    subtotal,
+    gst,
+    shipping,
+    grandTotal,
+    itemCount: cart.reduce((total, line) => total + line.quantity, 0),
+  };
+}
 
 export const productHighlights = [
   "Premium RO products",

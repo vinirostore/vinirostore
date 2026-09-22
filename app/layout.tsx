@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ShopStateProvider } from "@/components/shop-state";
 import { AuthStateProvider } from "@/components/auth-state";
 import { LoadingFeedback } from "@/components/loading-feedback";
+import { BackToTopButton } from "@/components/back-to-top";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,7 +30,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className="min-h-full bg-white text-slate-900">
         <LoadingFeedback />
         <AuthStateProvider>
-          <ShopStateProvider>{children}</ShopStateProvider>
+          <ShopStateProvider>
+            {children}
+            <BackToTopButton />
+          </ShopStateProvider>
         </AuthStateProvider>
       </body>
     </html>

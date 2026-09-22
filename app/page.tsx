@@ -72,7 +72,6 @@ function FeatureVisual({ variant }: { variant: "ultra" | "oem" | "turnaround" | 
 const categoryCards = [
   { title: "RO Systems", subtitle: "Ultra-filtration", copy: "High-efficiency purification units designed for modern homes and compact commercial spaces.", variant: "ultra" as const },
   { title: "Genuine Parts", subtitle: "OEM trusted", copy: "Premium filters, membranes, and spares to keep your system running at full performance.", variant: "oem" as const },
-  { title: "Installation", subtitle: "Fast turnaround", copy: "Expert fitting, plumbing setup, and on-site guidance from certified service professionals.", variant: "turnaround" as const },
   { title: "AMC Plans", subtitle: "Service care", copy: "Preventive maintenance and annual care with priority support for Ahmedabad homes and businesses.", variant: "care" as const },
 ];
 
@@ -151,7 +150,7 @@ export default function HomePage() {
             </div>
             <div>
               <span>Trusted service</span>
-              <strong>Fast installation &amp; repair</strong>
+              <strong>Fast repair &amp; support</strong>
             </div>
             <div>
               <span>Original spare parts</span>

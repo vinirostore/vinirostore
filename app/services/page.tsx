@@ -26,17 +26,6 @@ function ServiceVisual({ kind }: { kind: string }) {
         <path d="M72 96C85 89 95 87 110 89" stroke="rgba(255,255,255,0.8)" strokeWidth="4" strokeLinecap="round"/>
       </svg>
     ),
-    installation: (
-      <svg {...common} aria-hidden="true">
-        <rect x="38" y="52" width="124" height="30" rx="14" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.8)" strokeWidth="3"/>
-        <path d="M54 66H118" stroke="rgba(214,234,247,0.9)" strokeWidth="4" strokeLinecap="round"/>
-        <path d="M146 70V90" stroke="rgba(255,255,255,0.8)" strokeWidth="4" strokeLinecap="round"/>
-        <path d="M146 90H166" stroke="rgba(255,255,255,0.8)" strokeWidth="4" strokeLinecap="round"/>
-        <path d="M40 70H23" stroke="rgba(255,255,255,0.8)" strokeWidth="4" strokeLinecap="round"/>
-        <path d="M20 97H60" stroke="rgba(255,255,255,0.7)" strokeWidth="3" strokeLinecap="round"/>
-        <path d="M120 98H170" stroke="rgba(255,255,255,0.7)" strokeWidth="3" strokeLinecap="round"/>
-      </svg>
-    ),
     maintenance: (
       <svg {...common} aria-hidden="true">
         <path d="M67 78C67 60 80 46 98 46C115 46 128 60 128 78V82C128 99 115 112 98 112C80 112 67 99 67 82V78Z" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.8)" strokeWidth="3"/>
@@ -78,7 +67,7 @@ export default function ServicesPage() {
         <div className="mb-8">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Services</p>
           <h1 className="mt-3 text-3xl font-semibold text-slate-900 sm:text-4xl">Support your RO system with confidence</h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">From repair and general service to installation and annual maintenance, our support model keeps your RO system running smoothly.</p>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">From repair and general service to annual maintenance and RO support, our service model keeps your system running smoothly.</p>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">

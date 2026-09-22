@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { readStoredAccounts, useAuthState } from "@/components/auth-state";
+import { useAuthState } from "@/components/auth-state";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function RegisterPage() {
     if (isAuthenticated) router.replace("/account");
   }, [isAuthenticated, router]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name") ?? "").trim();
@@ -42,14 +42,17 @@ export default function RegisterPage() {
       return;
     }
 
-    const accounts = readStoredAccounts();
-    const existingAccount = accounts.find((account) => account.email.toLowerCase() === email.toLowerCase());
-    if (existingAccount) {
-      setError("An account with this email already exists. Please log in instead.");
+    const result = await registerAccount(name, email, password, phone);
+    if (result.error) {
+      setError(result.error.includes("already registered") ? "An account with this email already exists. Please log in instead." : result.error);
       return;
     }
 
-    registerAccount(name, email, password, phone);
+    if (result.needsEmailConfirmation) {
+      setError("Account created. Check your email to confirm the account, then log in.");
+      return;
+    }
+
     router.push("/account");
   }
 
