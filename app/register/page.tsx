@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { isAuthenticated, registerAccount } = useAuthState();
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -20,6 +21,9 @@ export default function RegisterPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
+    setError("");
+    setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name") ?? "").trim();
     const email = String(formData.get("email") ?? "").trim();
@@ -29,27 +33,37 @@ export default function RegisterPage() {
 
     if (!name || !email || !phone || !password) {
       setError("Please complete all fields to continue.");
+      setIsSubmitting(false);
       return;
     }
 
     if (password.length < 6) {
       setError("Use at least 6 characters for your password.");
+      setIsSubmitting(false);
       return;
     }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
+      setIsSubmitting(false);
       return;
     }
 
     const result = await registerAccount(name, email, password, phone);
     if (result.error) {
-      setError(result.error.includes("already registered") ? "An account with this email already exists. Please log in instead." : result.error);
+      const normalizedError = result.error.toLowerCase();
+      setError(normalizedError.includes("rate limit") || normalizedError.includes("email rate")
+        ? "Email sending is temporarily limited by Supabase. Wait a few minutes, then try again. If this email already has an account, use Login with email OTP instead."
+        : normalizedError.includes("already registered")
+          ? "An account with this email already exists. Please log in instead."
+          : result.error);
+      setIsSubmitting(false);
       return;
     }
 
     if (result.needsEmailConfirmation) {
       setError("Account created. Check your email to confirm the account, then log in.");
+      setIsSubmitting(false);
       return;
     }
 
@@ -135,8 +149,8 @@ export default function RegisterPage() {
                 </button>
               </div>
             </label>
-            <button type="submit" className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">
-              Create account
+            <button type="submit" disabled={isSubmitting} className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60">
+              {isSubmitting ? "Creating account..." : "Create account"}
             </button>
             {error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : null}
           </form>
