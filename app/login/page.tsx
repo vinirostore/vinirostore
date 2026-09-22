@@ -9,7 +9,9 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, useAuthState } from "@/components/auth-sta
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginAdminAccess } = useAuthState();
+  const { login, loginAdminAccess, requestEmailOtp, verifyEmailOtp } = useAuthState();
+  const [mode, setMode] = useState<"password" | "otp">("password");
+  const [otpSent, setOtpSent] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -20,8 +22,29 @@ export default function LoginPage() {
     const password = String(formData.get("password") ?? "");
     const normalizedEmail = email.toLowerCase();
 
-    if (!email || !password) {
+    if (!email || (mode === "password" && !password) || (mode === "otp" && otpSent && !String(formData.get("otp") ?? "").trim())) {
       setError("Enter your email and password to continue.");
+      return;
+    }
+
+    if (mode === "otp") {
+      if (otpSent) {
+        const result = await verifyEmailOtp(email, String(formData.get("otp") ?? ""));
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        router.push("/account");
+        return;
+      }
+
+      const result = await requestEmailOtp(email);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setOtpSent(true);
+      setError("A 6-digit verification code was sent to your email.");
       return;
     }
 
@@ -57,7 +80,7 @@ export default function LoginPage() {
               Email
               <input name="email" required type="email" className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-sky-300" placeholder="you@example.com" />
             </label>
-            <label className="block text-sm font-medium text-slate-700">
+            {mode === "password" ? <label className="block text-sm font-medium text-slate-700">
               Password
               <div className="relative mt-2">
                 <input
@@ -76,8 +99,12 @@ export default function LoginPage() {
                   {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
-            </label>
-            <button type="submit" className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Continue</button>
+            </label> : <label className="block text-sm font-medium text-slate-700">
+              Verification code
+              <input name="otp" inputMode="numeric" maxLength={6} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 tracking-[0.3em] outline-none focus:border-sky-300" placeholder={otpSent ? "Enter 6-digit code" : "Click send code first"} disabled={!otpSent} />
+            </label>}
+            <button type="submit" className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">{mode === "otp" && !otpSent ? "Send OTP" : "Continue"}</button>
+            <button type="button" onClick={() => { setMode(mode === "password" ? "otp" : "password"); setOtpSent(false); setError(""); }} className="w-full rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700">{mode === "password" ? "Login with email OTP" : "Login with password"}</button>
             {error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : null}
           </form>
           <p className="mt-5 text-sm text-slate-600">Need an account? <Link href="/register" className="font-medium text-sky-700">Create one</Link></p>
