@@ -329,6 +329,12 @@ export function getAccessoryList(): Accessory[] {
   return source.filter((item) => item.status !== "inactive");
 }
 
+export async function getAccessoryListFromStore(): Promise<Accessory[]> {
+  const remote = await fetchSupabaseCatalog<Accessory>("accessories");
+  if (remote && remote.length) return remote.filter((item) => item.status !== "inactive");
+  return getAccessoryList();
+}
+
 export function saveAccessoryList(nextAccessories: Accessory[]) {
   writeLocalCatalog("vini-accessories", nextAccessories);
   void writeSupabaseRows("accessories", nextAccessories.map((accessory) => ({
@@ -589,9 +595,7 @@ export function upsertProduct(input: Partial<Product> & Pick<Product, "name" | "
 }
 
 export async function getProductsFromStore(): Promise<Product[]> {
-  const hasConfiguredDatabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("YOUR_PASSWORD"));
-
-  if (!hasConfiguredDatabase) {
+  if (!hasSupabaseConfig()) {
     return getProductsFromStoreSync();
   }
 

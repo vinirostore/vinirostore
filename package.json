@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.js",
     "lint": "eslint",
     "build:cloudflare": "opennextjs-cloudflare build",
     "preview:cloudflare": "opennextjs-cloudflare build && wrangler dev",
@@ -16,6 +16,9 @@
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.16.0",

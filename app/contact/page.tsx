@@ -4,11 +4,14 @@ import { FormEvent, useState } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { businessConfig } from "@/lib/site-config";
+import { useAuthState } from "@/components/auth-state";
+import { createServiceRequest } from "@/lib/customer-data";
 
 export default function ContactPage() {
   const [status, setStatus] = useState("");
+  const { user } = useAuthState();
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name") ?? "").trim();
@@ -19,6 +22,17 @@ export default function ContactPage() {
 
     if (!name || !email || !body) {
       setStatus("Please complete your name, email, and message before continuing.");
+      return;
+    }
+
+    if (!user?.id) {
+      setStatus("Please log in before sending a service request so it can be saved to your account.");
+      return;
+    }
+
+    const result = await createServiceRequest({ customerId: user.id, name, email, phone, subject, message: body });
+    if (result.error) {
+      setStatus(result.error);
       return;
     }
 

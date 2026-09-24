@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { saveCustomerProfile } from "@/lib/customer-data";
 
 export type AccountUser = {
   id?: string;
@@ -136,23 +137,27 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     const applySupabaseSession = async () => {
       if (!supabase) return;
 
-      const { data } = await supabase.auth.getSession();
-      const sessionUser = data.session?.user;
-      if (!sessionUser) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        const sessionUser = data.session?.user;
+        if (!sessionUser) return;
 
-      const metadata = sessionUser.user_metadata || {};
-      const nextUser: AccountUser = {
-        id: sessionUser.id,
-        name: String(metadata.name || "Customer"),
-        email: normalizeEmail(sessionUser.email || ""),
-        phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
-        createdAt: sessionUser.created_at,
-      };
+        const metadata = sessionUser.user_metadata || {};
+        const nextUser: AccountUser = {
+          id: sessionUser.id,
+          name: String(metadata.name || "Customer"),
+          email: normalizeEmail(sessionUser.email || ""),
+          phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+          createdAt: sessionUser.created_at,
+        };
 
-      window.localStorage.setItem(AUTH_KEY, "true");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-      setUser(nextUser);
-      setIsAuthenticated(true);
+        window.localStorage.setItem(AUTH_KEY, "true");
+        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        setUser(nextUser);
+        setIsAuthenticated(true);
+      } catch {
+        // Ignore temporary Supabase fetch/session issues and fall back to local state.
+      }
     };
 
     const syncAuthState = () => {
@@ -183,53 +188,76 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       const normalizedEmail = normalizeEmail(email);
 
       if (supabase) {
-        const signInResult = await supabase.auth.signInWithPassword({
-          email: normalizedEmail,
-          password: password || "",
-        });
-        let authUser = signInResult.data.user;
-        let authError = signInResult.error;
+        try {
+          const signInResult = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: password || "",
+          });
+          let authUser = signInResult.data.user;
+          let authError = signInResult.error;
 
-        if (authError) {
-          const legacyAccount = getStoredAccountByEmail(normalizedEmail);
-          if (legacyAccount && legacyAccount.password === password) {
-            const migration = await supabase.auth.signUp({
-              email: normalizedEmail,
-              password: password || "",
-              options: {
-                data: {
-                  name: legacyAccount.name,
-                  phone: legacyAccount.phone || "",
+          if (authError) {
+            const legacyAccount = getStoredAccountByEmail(normalizedEmail);
+            if (legacyAccount && legacyAccount.password === password) {
+              const migration = await supabase.auth.signUp({
+                email: normalizedEmail,
+                password: password || "",
+                options: {
+                  data: {
+                    name: legacyAccount.name,
+                    phone: legacyAccount.phone || "",
+                  },
                 },
-              },
-            });
+              });
 
-            if (!migration.error && migration.data.user && migration.data.session) {
-              authUser = migration.data.user;
-              authError = null;
+              if (!migration.error && migration.data.user && migration.data.session) {
+                authUser = migration.data.user;
+                authError = null;
+              }
             }
           }
+
+          if (authError || !authUser) {
+            return { error: authError?.message || "Unable to sign in with this account." };
+          }
+
+          const metadata = authUser.user_metadata || {};
+          const nextUser: AccountUser = {
+            id: authUser.id,
+            name: String(metadata.name || name || "Customer"),
+            email: normalizeEmail(authUser.email || normalizedEmail),
+            phone: normalizeIndianPhone(String(metadata.phone || phone || "")) || undefined,
+            createdAt: authUser.created_at || createdAt || new Date().toISOString(),
+          };
+
+          window.localStorage.setItem(AUTH_KEY, "true");
+          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+          await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+          setUser(nextUser);
+          setIsAuthenticated(true);
+          setIsAdminAuthenticated(false);
+          return {};
+        } catch (error) {
+          const legacyAccount = getStoredAccountByEmail(normalizedEmail);
+          if (legacyAccount && legacyAccount.password === password) {
+            const nextUser: AccountUser = {
+              id: legacyAccount.id || `user-${Date.now()}`,
+              name: legacyAccount.name || name || "Customer",
+              email: normalizeEmail(legacyAccount.email),
+              phone: normalizeIndianPhone(legacyAccount.phone || phone) || undefined,
+              createdAt: legacyAccount.createdAt || createdAt || new Date().toISOString(),
+            };
+
+            window.localStorage.setItem(AUTH_KEY, "true");
+            window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+            setUser(nextUser);
+            setIsAuthenticated(true);
+            setIsAdminAuthenticated(false);
+            return {};
+          }
+
+          return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
         }
-
-        if (authError || !authUser) {
-          return { error: authError?.message || "Unable to sign in with this account." };
-        }
-
-        const metadata = authUser.user_metadata || {};
-        const nextUser: AccountUser = {
-          id: authUser.id,
-          name: String(metadata.name || name || "Customer"),
-          email: normalizeEmail(authUser.email || normalizedEmail),
-          phone: normalizeIndianPhone(String(metadata.phone || phone || "")) || undefined,
-          createdAt: authUser.created_at || createdAt || new Date().toISOString(),
-        };
-
-        window.localStorage.setItem(AUTH_KEY, "true");
-        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-        setUser(nextUser);
-        setIsAuthenticated(true);
-        setIsAdminAuthenticated(false);
-        return {};
       }
 
       const storedAccounts = readStoredAccounts();
@@ -258,71 +286,38 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     requestEmailOtp: async (email) => {
       if (!supabase) return { error: "Email OTP is not configured on this website." };
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: normalizeEmail(email),
-        options: {
-          shouldCreateUser: false,
-        },
-      });
+      try {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: normalizeEmail(email),
+          options: {
+            shouldCreateUser: false,
+          },
+        });
 
-      return error ? { error: error.message } : {};
+        return error ? { error: error.message } : {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Failed to fetch. Please try again." };
+      }
     },
     verifyEmailOtp: async (email, token) => {
       if (!supabase) return { error: "Email OTP is not configured on this website." };
 
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: normalizeEmail(email),
-        token: token.trim(),
-        type: "email",
-      });
-
-      if (error || !data.user) return { error: error?.message || "The verification code is invalid or expired." };
-
-      const metadata = data.user.user_metadata || {};
-      const nextUser: AccountUser = {
-        id: data.user.id,
-        name: String(metadata.name || "Customer"),
-        email: normalizeEmail(data.user.email || email),
-        phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
-        createdAt: data.user.created_at,
-      };
-
-      window.localStorage.setItem(AUTH_KEY, "true");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-      setUser(nextUser);
-      setIsAuthenticated(true);
-      setIsAdminAuthenticated(false);
-      return {};
-    },
-    registerAccount: async (name, email, password, phone) => {
-      const normalizedEmail = normalizeEmail(email);
-      const sanitizedName = name.trim() || "Customer";
-      const normalizedPhone = normalizeIndianPhone(phone);
-      const createdAt = new Date().toISOString();
-
-      if (supabase) {
-        const { data, error } = await supabase.auth.signUp({
-          email: normalizedEmail,
-          password,
-          options: {
-            emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
-            data: {
-              name: sanitizedName,
-              phone: normalizedPhone,
-            },
-          },
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: normalizeEmail(email),
+          token: token.trim(),
+          type: "email",
         });
 
-        if (error) return { error: error.message };
-        if (!data.user) return { error: "The account could not be created. Please try again." };
-        if (!data.session) return { needsEmailConfirmation: true };
+        if (error || !data.user) return { error: error?.message || "The verification code is invalid or expired." };
 
+        const metadata = data.user.user_metadata || {};
         const nextUser: AccountUser = {
           id: data.user.id,
-          name: sanitizedName,
-          email: normalizedEmail,
-          phone: normalizedPhone || undefined,
-          createdAt: data.user.created_at || createdAt,
+          name: String(metadata.name || "Customer"),
+          email: normalizeEmail(data.user.email || email),
+          phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+          createdAt: data.user.created_at,
         };
 
         window.localStorage.setItem(AUTH_KEY, "true");
@@ -331,6 +326,79 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         setIsAuthenticated(true);
         setIsAdminAuthenticated(false);
         return {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Failed to fetch. Please try again." };
+      }
+    },
+    registerAccount: async (name, email, password, phone) => {
+      const normalizedEmail = normalizeEmail(email);
+      const sanitizedName = name.trim() || "Customer";
+      const normalizedPhone = normalizeIndianPhone(phone);
+      const createdAt = new Date().toISOString();
+
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email: normalizedEmail,
+            password,
+            options: {
+              emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+              data: {
+                name: sanitizedName,
+                phone: normalizedPhone,
+              },
+            },
+          });
+
+          if (error) return { error: error.message };
+          if (!data.user) return { error: "The account could not be created. Please try again." };
+          if (!data.session) return { needsEmailConfirmation: true };
+
+          const nextUser: AccountUser = {
+            id: data.user.id,
+            name: sanitizedName,
+            email: normalizedEmail,
+            phone: normalizedPhone || undefined,
+            createdAt: data.user.created_at || createdAt,
+          };
+
+          window.localStorage.setItem(AUTH_KEY, "true");
+          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+          if (profileResult.error) return { error: profileResult.error };
+          setUser(nextUser);
+          setIsAuthenticated(true);
+          setIsAdminAuthenticated(false);
+          return {};
+        } catch (error) {
+          const nextAccount: StoredAccount = {
+            id: `user-${Date.now()}`,
+            name: sanitizedName,
+            email: normalizedEmail,
+            phone: normalizedPhone,
+            password,
+            createdAt,
+            addresses: [],
+            notifications: { serviceUpdates: true, promos: true, orderStatus: true },
+            paymentPreferences: { method: "cashfree" },
+          };
+
+          saveStoredAccount(nextAccount);
+          const nextUser: AccountUser = {
+            id: nextAccount.id,
+            name: sanitizedName,
+            email: normalizedEmail,
+            phone: normalizedPhone || undefined,
+            createdAt,
+          };
+
+          window.localStorage.setItem(AUTH_KEY, "true");
+          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+          setUser(nextUser);
+          setIsAuthenticated(true);
+          setIsAdminAuthenticated(false);
+          return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
+        }
       }
 
       const nextAccount: StoredAccount = {
@@ -368,21 +436,6 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         phone: normalizedPhone || persistedAccount.phone,
         createdAt: persistedAccount.createdAt || createdAt,
       };
-
-      try {
-        const { supabase } = require("@/lib/supabase");
-        if (supabase) {
-          void supabase.from("profiles").upsert({
-            id: nextUser.id,
-            email: normalizedEmail,
-            full_name: sanitizedName,
-            phone: normalizedPhone || persistedAccount.phone,
-            created_at: persistedAccount.createdAt || createdAt,
-          }, { onConflict: "email" });
-        }
-      } catch {
-        // ignore database sync issues and use local state as source of truth
-      }
 
       window.localStorage.setItem(AUTH_KEY, "true");
       window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));

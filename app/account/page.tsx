@@ -1,24 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { businessConfig } from "@/lib/site-config";
 import { ADMIN_EMAIL, getStoredAccountByEmail, useAuthState } from "@/components/auth-state";
-
-const accountSections = [
-  { label: "My Orders", value: "2 active orders" },
-  { label: "Service Requests", value: "3 recent requests" },
-  { label: "Service History", value: "8 completed visits" },
-  { label: "AMC Information", value: "Active coverage" },
-];
+import { getCustomerAccount, type CustomerOrder, type CustomerServiceRequest } from "@/lib/customer-data";
 
 export default function AccountPage() {
   const router = useRouter();
   const { isAuthenticated, isAdminAuthenticated, logout, user } = useAuthState();
   const storedAccount = user ? getStoredAccountByEmail(user.email) : undefined;
+  const [orders, setOrders] = useState<CustomerOrder[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<CustomerServiceRequest[]>([]);
+  const [dataError, setDataError] = useState("");
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -30,6 +27,15 @@ export default function AccountPage() {
       router.replace("/admin");
     }
   }, [isAuthenticated, isAdminAuthenticated, router, user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void getCustomerAccount(user.id).then((result) => {
+      setOrders(result.orders);
+      setServiceRequests(result.serviceRequests);
+      setDataError(result.error || "");
+    });
+  }, [user?.id]);
 
   if (!isAuthenticated || !user) return null;
 
@@ -99,12 +105,20 @@ export default function AccountPage() {
             <div className="mt-8">
               <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Quick overview</h3>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {accountSections.map((section) => (
-                  <div key={section.label} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{section.label}</p>
-                    <p className="mt-2 text-base font-medium text-slate-900">{section.value}</p>
-                  </div>
-                ))}
+                <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">My orders</p><p className="mt-2 text-base font-medium text-slate-900">{orders.length} total</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Service requests</p><p className="mt-2 text-base font-medium text-slate-900">{serviceRequests.length} total</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Completed orders</p><p className="mt-2 text-base font-medium text-slate-900">{orders.filter((order) => order.status === "delivered").length}</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Completed services</p><p className="mt-2 text-base font-medium text-slate-900">{serviceRequests.filter((request) => request.status === "completed").length}</p></div>
+              </div>
+            </div>
+
+            <div className="mt-8 border-t border-slate-200 pt-8">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Recent activity</h3>
+              {dataError ? <p className="mt-4 text-sm text-rose-700">{dataError}</p> : null}
+              {!dataError && orders.length === 0 && serviceRequests.length === 0 ? <p className="mt-4 text-sm text-slate-600">No orders or service requests yet.</p> : null}
+              <div className="mt-4 space-y-3">
+                {orders.slice(0, 5).map((order) => <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><p className="font-medium text-slate-900">Order {order.order_number}</p><span className="text-sm capitalize text-slate-600">{order.status}</span></div><p className="mt-2 text-sm text-slate-600">{order.order_items.length} item(s) · ₹{Number(order.total).toLocaleString("en-IN")}</p></div>)}
+                {serviceRequests.slice(0, 5).map((request) => <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><p className="font-medium text-slate-900">{request.subject}</p><span className="text-sm capitalize text-slate-600">{request.status.replace("_", " ")}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{request.message}</p></div>)}
               </div>
             </div>
           </section>

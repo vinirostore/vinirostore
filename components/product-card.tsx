@@ -24,7 +24,7 @@ export function ProductCard({ product }: { product: Product }) {
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">{product.brand}</p>
             <h3 className="mt-1 text-lg font-semibold text-slate-900">{product.name}</h3>
           </div>
-          <button type="button" onClick={() => toggleWishlist(product.slug)} className={`wishlist-button rounded-full border p-2 transition hover:border-sky-200 hover:text-sky-700 ${wishlisted ? "border-sky-300 text-sky-700" : "border-slate-200 text-slate-500"}`} aria-label={`${wishlisted ? "Remove" : "Add"} ${product.name} ${wishlisted ? "from" : "to"} wishlist`}>
+          <button type="button" onClick={() => toggleWishlist(product.slug, product)} className={`wishlist-button rounded-full border p-2 transition hover:border-sky-200 hover:text-sky-700 ${wishlisted ? "border-sky-300 text-sky-700" : "border-slate-200 text-slate-500"}`} aria-label={`${wishlisted ? "Remove" : "Add"} ${product.name} ${wishlisted ? "from" : "to"} wishlist`}>
             {wishlisted ? "♥" : "♡"}
           </button>
         </div>

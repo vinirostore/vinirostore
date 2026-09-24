@@ -7,8 +7,8 @@ import { useShopState } from "@/components/shop-state";
 import { productsBySlug } from "@/lib/catalog";
 
 export default function WishlistPage() {
-  const { addToCart, toggleWishlist, wishlist } = useShopState();
-  const savedProducts = wishlist.map((slug) => productsBySlug[slug]).filter(Boolean);
+  const { addToCart, toggleWishlist, wishlist, wishlistItems } = useShopState();
+  const savedProducts = wishlistItems.length ? wishlistItems : wishlist.map((slug) => productsBySlug[slug]).filter(Boolean);
 
   return (
     <>
@@ -27,7 +27,7 @@ export default function WishlistPage() {
               <p className="mt-2 text-lg font-semibold text-slate-900">₹{product.price.toLocaleString("en-IN")}</p>
               <div className="mt-4 flex gap-3">
                 <button type="button" onClick={() => addToCart(product)} className="flex-1 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Add to cart</button>
-                <button type="button" onClick={() => toggleWishlist(product.slug)} className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700">Remove</button>
+                <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700">Remove</button>
               </div>
             </article>
           ))}
