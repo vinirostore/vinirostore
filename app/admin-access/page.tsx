@@ -2,44 +2,38 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ADMIN_BIRTHDATE, ADMIN_EMAIL, ADMIN_PHONE, useAuthState } from "@/components/auth-state";
+import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
 export default function AdminAccessPage() {
   const router = useRouter();
-  const { isAuthenticated, user, loginAdminAccess } = useAuthState();
+  const { isAuthReady, isAuthenticated, isSupabaseAuthenticated, isAdminAuthenticated, user, verifyAdminAccess } = useAuthState();
   const [phone, setPhone] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!isAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    if (!isAuthReady) return;
+    if (!isAuthenticated || !isSupabaseAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       router.replace("/login");
+      return;
     }
-  }, [isAuthenticated, router, user]);
+    if (isAdminAuthenticated) router.replace("/admin");
+  }, [isAdminAuthenticated, isAuthReady, isAuthenticated, isSupabaseAuthenticated, router, user]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const normalizedPhone = phone.replace(/\D/g, "");
-    const normalizedBirthDate = birthDate.trim();
-
-    if (normalizedPhone !== ADMIN_PHONE) {
-      setError("Incorrect phone number. Please try again.");
+    const result = await verifyAdminAccess(phone, birthDate);
+    if (result.error) {
+      setError(result.error);
       return;
     }
-
-    if (normalizedBirthDate !== ADMIN_BIRTHDATE) {
-      setError("Incorrect security answer. Please try again.");
-      return;
-    }
-
-    await loginAdminAccess();
     router.replace("/admin");
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthReady || !isAuthenticated || !isSupabaseAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) return null;
 
   return (
     <>
@@ -49,7 +43,7 @@ export default function AdminAccessPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Admin access</p>
           <h1 className="mt-3 text-3xl font-semibold text-slate-900">Verify identity</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Enter the registered admin phone number and the security answer to continue to the admin portal.
+            Enter the registered admin phone number and birth date to continue to the admin portal.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-5">

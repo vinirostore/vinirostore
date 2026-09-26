@@ -2,8 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin-shell";
-import { useAuthState } from "@/components/auth-state";
+import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
 
 const kpis = [
   { label: "Total sales", value: "₹7.8L" },
@@ -14,10 +13,11 @@ const kpis = [
 
 export default function AdminOverviewPage() {
   const router = useRouter();
-  const { isAdminAuthenticated, isAuthenticated } = useAuthState();
+  const { isAuthReady, isAdminAuthenticated, isAuthenticated, isSupabaseAuthenticated, user } = useAuthState();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthReady) return;
+    if (!isAuthenticated || !isSupabaseAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       router.replace("/login");
       return;
     }
@@ -25,9 +25,9 @@ export default function AdminOverviewPage() {
     if (!isAdminAuthenticated) {
       router.replace("/admin-access");
     }
-  }, [isAdminAuthenticated, isAuthenticated, router]);
+  }, [isAdminAuthenticated, isAuthReady, isAuthenticated, isSupabaseAuthenticated, router, user]);
 
-  if (!isAuthenticated || !isAdminAuthenticated) return null;
+  if (!isAuthReady || !isAuthenticated || !isSupabaseAuthenticated || !isAdminAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) return null;
 
   return (
     <div className="space-y-6">

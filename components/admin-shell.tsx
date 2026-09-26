@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { useAuthState } from "@/components/auth-state";
+import { useEffect, useState } from "react";
+import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
 
 const nav = [
   { label: "Overview", href: "/admin" },
@@ -23,10 +23,19 @@ const nav = [
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { logout } = useAuthState();
+  const { isAuthReady, isAuthenticated, isSupabaseAuthenticated, isAdminAuthenticated, user, logout } = useAuthState();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+    if (!isAuthenticated || !isSupabaseAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      router.replace("/login");
+      return;
+    }
+    if (!isAdminAuthenticated) router.replace("/admin-access");
+  }, [isAdminAuthenticated, isAuthReady, isAuthenticated, isSupabaseAuthenticated, router, user]);
 
   function confirmLogout() {
     setShowLogoutConfirm(false);
@@ -34,6 +43,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     router.replace("/login");
     router.refresh();
   }
+
+  if (!isAuthReady || !isAuthenticated || !isSupabaseAuthenticated || !isAdminAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) return null;
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">

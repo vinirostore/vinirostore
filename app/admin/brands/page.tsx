@@ -5,6 +5,8 @@ import { Brand, deleteBrandById, getBrandList, saveBrandList, upsertBrand } from
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({ id: "", name: "", slug: "", logo: "/RO1.jpeg", description: "", status: "active" as Brand["status"] });
 
   useEffect(() => {
@@ -35,8 +37,11 @@ export default function AdminBrandsPage() {
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError("");
     const next = upsertBrand({
       id: form.id || undefined,
       name: form.name,
@@ -48,7 +53,12 @@ export default function AdminBrandsPage() {
 
     const updated = [...getBrandList().filter((brand) => brand.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
     setBrands(updated);
-    saveBrandList(updated);
+    const error = await saveBrandList(updated);
+    setIsSaving(false);
+    if (error) {
+      setSaveError(`Brand is only saved in this browser. Supabase: ${error}`);
+      return;
+    }
     setForm({ id: "", name: "", slug: "", logo: "/RO1.jpeg", description: "", status: "active" });
   }
 
@@ -108,9 +118,10 @@ export default function AdminBrandsPage() {
               </select>
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Save brand</button>
+              <button type="submit" disabled={isSaving} className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60">{isSaving ? "Saving..." : "Save brand"}</button>
               <button type="button" onClick={() => setForm({ id: "", name: "", slug: "", logo: "/RO1.jpeg", description: "", status: "active" })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
             </div>
+            {saveError ? <p className="mt-4 text-sm text-rose-700" role="alert">{saveError}</p> : null}
           </div>
         </form>
 

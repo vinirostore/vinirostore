@@ -3,6 +3,9 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { saveCustomerProfile } from "@/lib/customer-data";
+import { ADMIN_EMAIL } from "@/lib/admin-config";
+
+export { ADMIN_EMAIL };
 
 export type AccountUser = {
   id?: string;
@@ -25,6 +28,8 @@ export type StoredAccount = AccountUser & {
 
 type AuthState = {
   isAuthenticated: boolean;
+  isAuthReady: boolean;
+  isSupabaseAuthenticated: boolean;
   isAdminAuthenticated: boolean;
   user: AccountUser | null;
   login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
@@ -34,20 +39,15 @@ type AuthState = {
   requestPasswordReset: (email: string) => Promise<PasswordRecoveryResult>;
   resetPasswordWithSecurityAnswer: (email: string, answer: string, newPassword: string) => Promise<{ error?: string }>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ error?: string }>;
-  loginAdminAccess: () => Promise<void>;
+  signInAdmin: (email: string, password: string) => Promise<{ error?: string }>;
+  verifyAdminAccess: (phone: string, birthDate: string) => Promise<{ error?: string }>;
   logout: () => void;
 };
 
 const AuthStateContext = createContext<AuthState | null>(null);
 const AUTH_KEY = "vini-authenticated";
 const USER_KEY = "vini-user";
-const ADMIN_AUTH_KEY = "vini-admin-authenticated";
 const ACCOUNTS_KEY = "vini-accounts";
-
-export const ADMIN_EMAIL = "vinirostore@gmail.com";
-export const ADMIN_PASSWORD = "vinirostore@2020";
-export const ADMIN_PHONE = "9104881806";
-export const ADMIN_BIRTHDATE = "26-07-2007";
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -138,24 +138,28 @@ function readAuthState() {
   return window.localStorage.getItem(AUTH_KEY) === "true";
 }
 
-function readAdminAuthState() {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(ADMIN_AUTH_KEY) === "true";
-}
-
 export function AuthStateProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AccountUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isSupabaseAuthenticated, setIsSupabaseAuthenticated] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   useEffect(() => {
     const applySupabaseSession = async () => {
-      if (!supabase) return;
+      if (!supabase) {
+        setIsAuthReady(true);
+        return;
+      }
 
       try {
         const { data } = await supabase.auth.getSession();
         const sessionUser = data.session?.user;
-        if (!sessionUser) return;
+        if (!sessionUser) {
+          setIsSupabaseAuthenticated(false);
+          setIsAdminAuthenticated(false);
+          return;
+        }
 
         const metadata = sessionUser.user_metadata || {};
         const nextUser: AccountUser = {
@@ -178,8 +182,23 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         });
         setUser(nextUser);
         setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
+
+        if (normalizeEmail(sessionUser.email || "") === ADMIN_EMAIL) {
+          const response = await fetch("/api/admin-access", {
+            headers: { Authorization: `Bearer ${data.session!.access_token}` },
+            cache: "no-store",
+          });
+          const result = await response.json() as { verified?: boolean };
+          setIsAdminAuthenticated(Boolean(result.verified));
+        } else {
+          setIsAdminAuthenticated(false);
+        }
       } catch {
-        // Ignore temporary Supabase fetch/session issues and fall back to local state.
+        setIsSupabaseAuthenticated(false);
+        setIsAdminAuthenticated(false);
+      } finally {
+        setIsAuthReady(true);
       }
     };
 
@@ -187,24 +206,36 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       const currentUser = readUserState();
       setUser(currentUser);
       setIsAuthenticated(Boolean(currentUser) && readAuthState());
-      setIsAdminAuthenticated(readAdminAuthState());
     };
 
     syncAuthState();
     void applySupabaseSession();
+    const authSubscription = supabase
+      ? supabase.auth.onAuthStateChange((event) => {
+          if (event === "SIGNED_OUT") {
+            setIsSupabaseAuthenticated(false);
+            setIsAdminAuthenticated(false);
+          }
+        }).data.subscription
+      : null;
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === USER_KEY || event.key === AUTH_KEY || event.key === ADMIN_AUTH_KEY) {
+      if (event.key === USER_KEY || event.key === AUTH_KEY) {
         syncAuthState();
       }
     };
 
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      authSubscription?.unsubscribe();
+    };
   }, []);
 
   const value = useMemo<AuthState>(() => ({
     isAuthenticated,
+    isAuthReady,
+    isSupabaseAuthenticated,
     isAdminAuthenticated,
     user,
     login: async (email, name, phone, createdAt, password) => {
@@ -260,6 +291,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
           setUser(nextUser);
           setIsAuthenticated(true);
+          setIsSupabaseAuthenticated(true);
           setIsAdminAuthenticated(false);
           return {};
         } catch (error) {
@@ -277,6 +309,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
             window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
             setUser(nextUser);
             setIsAuthenticated(true);
+            setIsSupabaseAuthenticated(false);
             setIsAdminAuthenticated(false);
             return {};
           }
@@ -305,6 +338,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
       setUser(nextUser);
       setIsAuthenticated(true);
+      setIsSupabaseAuthenticated(false);
       setIsAdminAuthenticated(false);
       return {};
     },
@@ -349,6 +383,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
         setUser(nextUser);
         setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
         setIsAdminAuthenticated(false);
         return {};
       } catch (error) {
@@ -396,6 +431,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           if (profileResult.error) return { error: profileResult.error };
           setUser(nextUser);
           setIsAuthenticated(true);
+          setIsSupabaseAuthenticated(true);
           setIsAdminAuthenticated(false);
           return {};
         } catch (error) {
@@ -426,6 +462,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
           setUser(nextUser);
           setIsAuthenticated(true);
+          setIsSupabaseAuthenticated(false);
           setIsAdminAuthenticated(false);
           return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
         }
@@ -473,6 +510,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
       setUser(nextUser);
       setIsAuthenticated(true);
+      setIsSupabaseAuthenticated(false);
       setIsAdminAuthenticated(false);
       return {};
     },
@@ -513,38 +551,84 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       saveStoredAccount({ ...account, password: newPassword });
       return {};
     },
-    loginAdminAccess: async () => {
-      if (supabase) {
-        try {
-          await supabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
-        } catch {
-          // Keep the local admin session available when Supabase admin auth is not configured.
-        }
-      }
-      const nextUser: AccountUser = {
-        id: "admin-vini-ro",
-        name: "VINI RO Admin",
-        email: "vinirostore@gmail.com",
-        phone: ADMIN_PHONE,
-        createdAt: new Date().toISOString(),
-      };
+    signInAdmin: async (email, password) => {
+      if (!supabase) return { error: "Admin sign-in is unavailable because Supabase is not configured." };
 
-      window.localStorage.setItem(AUTH_KEY, "true");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-      window.localStorage.setItem(ADMIN_AUTH_KEY, "true");
-      setUser(nextUser);
-      setIsAuthenticated(true);
-      setIsAdminAuthenticated(true);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: normalizeEmail(email),
+          password,
+        });
+        if (error) return { error: error.message };
+        if (!data.session || !data.user) return { error: "Supabase did not create an authenticated session." };
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData.session || sessionData.session.user.id !== data.user.id) {
+          await supabase.auth.signOut();
+          return { error: "Supabase did not persist the admin session. Please try again." };
+        }
+        if (normalizeEmail(data.user.email || "") !== ADMIN_EMAIL) {
+          await supabase.auth.signOut();
+          return { error: "This Supabase account is not authorized for admin access." };
+        }
+
+        const metadata = data.user.user_metadata || {};
+        const nextUser: AccountUser = {
+          id: data.user.id,
+          name: String(metadata.name || "VINI RO Admin"),
+          email: ADMIN_EMAIL,
+          phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+          createdAt: data.user.created_at,
+        };
+        window.localStorage.setItem(AUTH_KEY, "true");
+        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsAuthReady(true);
+        setIsSupabaseAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to sign in to Supabase." };
+      }
+    },
+    verifyAdminAccess: async (phone, birthDate) => {
+      if (!supabase) return { error: "Admin verification is unavailable because Supabase is not configured." };
+
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        const session = data.session;
+        if (error || !session || normalizeEmail(session.user.email || "") !== ADMIN_EMAIL) {
+          return { error: "Sign in with the configured admin Supabase account first." };
+        }
+
+        const response = await fetch("/api/admin-access", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ phone, birthDate }),
+        });
+        const result = await response.json() as { verified?: boolean; error?: string };
+        if (!response.ok || !result.verified) return { error: result.error || "Admin verification failed." };
+
+        setIsAdminAuthenticated(true);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to verify admin access." };
+      }
     },
     logout: () => {
+      if (supabase) void supabase.auth.signOut();
+      void fetch("/api/admin-access", { method: "DELETE", keepalive: true });
       window.localStorage.removeItem(AUTH_KEY);
       window.localStorage.removeItem(USER_KEY);
-      window.localStorage.removeItem(ADMIN_AUTH_KEY);
       setUser(null);
       setIsAuthenticated(false);
+      setIsSupabaseAuthenticated(false);
       setIsAdminAuthenticated(false);
     },
-  }), [isAuthenticated, isAdminAuthenticated, user]);
+  }), [isAuthenticated, isAuthReady, isSupabaseAuthenticated, isAdminAuthenticated, user]);
 
   return <AuthStateContext.Provider value={value}>{children}</AuthStateContext.Provider>;
 }

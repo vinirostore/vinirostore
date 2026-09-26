@@ -75,6 +75,7 @@ create table if not exists public.models (
   description text not null default '',
   image text not null,
   gallery jsonb not null default '[]'::jsonb,
+  colors jsonb not null default '[]'::jsonb,
   price numeric,
   status text not null default 'active' check (status in ('active', 'inactive')),
   created_at timestamptz not null default now(),
@@ -82,6 +83,7 @@ create table if not exists public.models (
 );
 
 alter table public.models add column if not exists gallery jsonb not null default '[]'::jsonb;
+alter table public.models add column if not exists colors jsonb not null default '[]'::jsonb;
 alter table public.models add column if not exists price numeric;
 alter table public.models add column if not exists new_arrival boolean not null default false;
 alter table public.models add column if not exists best_seller boolean not null default false;
@@ -181,13 +183,23 @@ drop policy if exists "Customers can view their orders" on public.orders;
 create policy "Customers can view their orders" on public.orders for select using (auth.uid() = customer_id);
 drop policy if exists "Customers can create their orders" on public.orders;
 create policy "Customers can create their orders" on public.orders for insert with check (auth.uid() = customer_id);
+drop policy if exists "Admins can view all orders" on public.orders;
+create policy "Admins can view all orders" on public.orders for select using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
+drop policy if exists "Admins can update all orders" on public.orders;
+create policy "Admins can update all orders" on public.orders for update using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 
 drop policy if exists "Customers can view their order items" on public.order_items;
 create policy "Customers can view their order items" on public.order_items for select using (exists (select 1 from public.orders where orders.id = order_items.order_id and orders.customer_id = auth.uid()));
+drop policy if exists "Admins can view all order items" on public.order_items;
+create policy "Admins can view all order items" on public.order_items for select using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 drop policy if exists "Customers can create their order items" on public.order_items;
 create policy "Customers can create their order items" on public.order_items for insert with check (exists (select 1 from public.orders where orders.id = order_items.order_id and orders.customer_id = auth.uid()));
 
 drop policy if exists "Customers can view their service requests" on public.service_requests;
 create policy "Customers can view their service requests" on public.service_requests for select using (auth.uid() = customer_id);
+drop policy if exists "Admins can view all service requests" on public.service_requests;
+create policy "Admins can view all service requests" on public.service_requests for select using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
+drop policy if exists "Admins can update all service requests" on public.service_requests;
+create policy "Admins can update all service requests" on public.service_requests for update using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 drop policy if exists "Customers can create service requests" on public.service_requests;
 create policy "Customers can create service requests" on public.service_requests for insert with check (auth.uid() = customer_id);

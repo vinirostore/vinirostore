@@ -259,16 +259,16 @@ function hasSupabaseConfig() {
 }
 
 async function writeSupabaseRows<T>(table: string, rows: T[]) {
-  if (!hasSupabaseConfig()) return false;
+  if (!hasSupabaseConfig()) return "Supabase is not configured.";
 
   try {
     const { supabase } = await import("@/lib/supabase");
-    if (!supabase) return false;
+    if (!supabase) return "Supabase is not configured.";
     const payload = rows as unknown as Record<string, unknown>[];
     const { error } = await supabase.from(table).upsert(payload, { onConflict: "id" });
-    return !error;
-  } catch {
-    return false;
+    return error?.message ?? null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Unable to save data to Supabase.";
   }
 }
 
@@ -574,9 +574,9 @@ export function saveProductsToStore(nextProducts: Product[]) {
   })));
 }
 
-export function saveBrandList(nextBrands: Brand[]) {
+export async function saveBrandList(nextBrands: Brand[]) {
   writeLocalCatalog("vini-brands", nextBrands);
-  void writeSupabaseRows("brands", nextBrands.map((brand) => ({
+  return writeSupabaseRows("brands", nextBrands.map((brand) => ({
     id: brand.id,
     name: brand.name,
     slug: brand.slug,
@@ -651,7 +651,7 @@ export function upsertBrand(input: Partial<Brand> & Pick<Brand, "name">): Brand 
     updated.push(nextBrand);
   }
 
-  saveBrandList(updated);
+  writeLocalCatalog("vini-brands", updated);
   return nextBrand;
 }
 

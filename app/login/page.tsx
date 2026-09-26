@@ -5,11 +5,11 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { ADMIN_EMAIL, ADMIN_PASSWORD, useAuthState } from "@/components/auth-state";
+import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginAdminAccess, requestEmailOtp, verifyEmailOtp, requestPasswordReset, resetPasswordWithSecurityAnswer } = useAuthState();
+  const { login, signInAdmin, requestEmailOtp, verifyEmailOtp, requestPasswordReset, resetPasswordWithSecurityAnswer } = useAuthState();
   const [mode, setMode] = useState<"password" | "otp" | "recovery">("password");
   const [otpSent, setOtpSent] = useState(false);
   const [error, setError] = useState("");
@@ -86,12 +86,11 @@ export default function LoginPage() {
       }
 
       if (normalizedEmail === ADMIN_EMAIL.toLowerCase()) {
-        if (password !== ADMIN_PASSWORD) {
-          setError("Incorrect password for the specified admin email. Use the exact admin email and password provided for this portal.");
+        const adminResult = await signInAdmin(email, password);
+        if (adminResult.error) {
+          setError(adminResult.error);
           return;
         }
-
-        await loginAdminAccess();
         router.push("/admin-access");
         return;
       }
