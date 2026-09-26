@@ -5,8 +5,13 @@ create table if not exists public.profiles (
   email text not null unique,
   full_name text not null,
   phone text,
+  security_question text,
+  security_answer_hash text,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists security_question text;
+alter table public.profiles add column if not exists security_answer_hash text;
 
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
@@ -51,10 +56,119 @@ create table if not exists public.service_requests (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.brands (
+  id text primary key,
+  name text not null,
+  slug text not null unique,
+  logo text not null,
+  description text not null default '',
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.models (
+  id text primary key,
+  name text not null,
+  slug text not null,
+  brand_id text not null references public.brands(id) on delete cascade,
+  description text not null default '',
+  image text not null,
+  gallery jsonb not null default '[]'::jsonb,
+  price numeric,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.models add column if not exists gallery jsonb not null default '[]'::jsonb;
+alter table public.models add column if not exists price numeric;
+alter table public.models add column if not exists new_arrival boolean not null default false;
+alter table public.models add column if not exists best_seller boolean not null default false;
+alter table public.models add column if not exists featured boolean not null default false;
+alter table public.models add column if not exists deal boolean not null default false;
+
+create table if not exists public.products (
+  id text primary key,
+  name text not null,
+  slug text not null unique,
+  category text not null,
+  brand text not null,
+  brand_id text references public.brands(id) on delete set null,
+  model text,
+  model_id text references public.models(id) on delete set null,
+  model_slug text,
+  price numeric(12,2) not null default 0,
+  compare_at_price numeric(12,2),
+  inventory integer not null default 0,
+  image text not null,
+  gallery jsonb not null default '[]'::jsonb,
+  description text not null default '',
+  short_description text not null default '',
+  badge text,
+  featured boolean not null default false,
+  new_arrival boolean not null default false,
+  best_seller boolean not null default false,
+  deal boolean not null default false,
+  sku text not null,
+  stock_status text not null default 'in-stock',
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  specifications jsonb not null default '{}'::jsonb,
+  features jsonb not null default '[]'::jsonb,
+  technology text,
+  capacity text,
+  warranty text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.products add column if not exists new_arrival boolean not null default false;
+alter table public.products add column if not exists best_seller boolean not null default false;
+alter table public.products add column if not exists deal boolean not null default false;
+
+create table if not exists public.accessories (
+  id text primary key,
+  name text not null,
+  slug text not null unique,
+  category text not null,
+  price numeric(12,2) not null default 0,
+  stock integer not null default 0,
+  image text not null,
+  short_description text not null default '',
+  description text not null default '',
+  features jsonb not null default '[]'::jsonb,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  featured boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.profiles enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.service_requests enable row level security;
+alter table public.brands enable row level security;
+alter table public.models enable row level security;
+alter table public.products enable row level security;
+alter table public.accessories enable row level security;
+
+drop policy if exists "Anyone can view catalog" on public.brands;
+create policy "Anyone can view catalog" on public.brands for select using (true);
+drop policy if exists "Anyone can view models" on public.models;
+create policy "Anyone can view models" on public.models for select using (true);
+drop policy if exists "Anyone can view products" on public.products;
+create policy "Anyone can view products" on public.products for select using (true);
+drop policy if exists "Anyone can view accessories" on public.accessories;
+create policy "Anyone can view accessories" on public.accessories for select using (true);
+
+drop policy if exists "Authenticated admins can manage brands" on public.brands;
+create policy "Authenticated admins can manage brands" on public.brands for all using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
+drop policy if exists "Authenticated admins can manage models" on public.models;
+create policy "Authenticated admins can manage models" on public.models for all using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
+drop policy if exists "Authenticated admins can manage products" on public.products;
+create policy "Authenticated admins can manage products" on public.products for all using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
+drop policy if exists "Authenticated admins can manage accessories" on public.accessories;
+create policy "Authenticated admins can manage accessories" on public.accessories for all using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 
 drop policy if exists "Customers can view their profile" on public.profiles;
 create policy "Customers can view their profile" on public.profiles for select using (auth.uid() = id);
