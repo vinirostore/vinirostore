@@ -21,7 +21,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
             <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4">
-              <img src={product.image} alt={product.name} className="h-[420px] w-full rounded-[20px] object-cover" />
+              <img src={product.image} alt={product.name} className="h-[520px] w-full scale-[1.06] rounded-[20px] object-cover" />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-3">
               {product.gallery.map((image) => (

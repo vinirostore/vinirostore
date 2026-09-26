@@ -25,6 +25,9 @@ const defaultForm = {
   sku: "",
   badge: "",
   featured: false,
+  newArrival: false,
+  bestSeller: false,
+  deal: false,
   technology: "",
   capacity: "",
   warranty: "",
@@ -106,6 +109,9 @@ export default function AdminProductsPage() {
       sku: form.sku || `SKU-${(form.name || "product").toUpperCase().replace(/[^A-Z0-9]+/g, "-")}`,
       badge: form.badge || undefined,
       featured: form.featured,
+      newArrival: form.newArrival,
+      bestSeller: form.bestSeller,
+      deal: form.deal,
       features: parseFeatures(form.features),
       specifications: parseSpecifications(form.specifications),
       technology: form.technology || undefined,
@@ -142,6 +148,9 @@ export default function AdminProductsPage() {
       sku: product.sku ?? "",
       badge: product.badge ?? "",
       featured: product.featured ?? false,
+      newArrival: product.newArrival ?? false,
+      bestSeller: product.bestSeller ?? false,
+      deal: product.deal ?? false,
       technology: product.technology ?? "",
       capacity: product.capacity ?? "",
       warranty: product.warranty ?? "",
@@ -300,6 +309,19 @@ export default function AdminProductsPage() {
               <input type="checkbox" checked={form.featured} onChange={(event) => setForm((current) => ({ ...current, featured: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" />
               Mark as featured product
             </label>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {([
+                ["newArrival", "New arrival"],
+                ["bestSeller", "Best seller"],
+                ["deal", "Deal / offer"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                  <input type="checkbox" checked={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" />
+                  {label}
+                </label>
+              ))}
+            </div>
 
             <div className="flex gap-3 pt-2">
               <button type="submit" className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Save product</button>

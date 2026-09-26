@@ -16,6 +16,13 @@ export type ProductModel = {
   brandId: string;
   description: string;
   image: string;
+  gallery: string[];
+  colors?: Array<{ name: string; image: string }>;
+  price?: number;
+  newArrival?: boolean;
+  bestSeller?: boolean;
+  featured?: boolean;
+  deal?: boolean;
   status: "active" | "inactive";
   createdAt?: string;
   updatedAt?: string;
@@ -65,6 +72,9 @@ export type Product = {
   shortDescription: string;
   badge?: string;
   featured?: boolean;
+  newArrival?: boolean;
+  bestSeller?: boolean;
+  deal?: boolean;
   sku: string;
   stockStatus: "in-stock" | "low-stock" | "out-of-stock" | "unavailable";
   status?: "active" | "inactive";
@@ -90,10 +100,10 @@ export const brands: Brand[] = [
 ];
 
 export const defaultModels: ProductModel[] = [
-  { id: "model-kent-supreme-plus", name: "Kent Supreme Plus", slug: "kent-supreme-plus", brandId: "brand-kent", description: "High-capacity RO unit designed for family convenience and consistent output.", image: "/RO1.jpeg", status: "active" },
-  { id: "model-aquaguard-essence", name: "AQUAGUARD Essence", slug: "aquaguard-essence", brandId: "brand-aquaguard", description: "Compact countertop RO solution for clean and safe drinking water.", image: "/RO2.jpeg", status: "active" },
-  { id: "model-pureit-classic", name: "Pureit Classic", slug: "pureit-classic", brandId: "brand-pureit", description: "Designed for daily filtration needs with simpler service maintenance.", image: "/RO3.jpeg", status: "active" },
-  { id: "model-vini-compact", name: "VINI Compact", slug: "vini-compact", brandId: "brand-vini", description: "Value-first RO model built with dependable service support and essential performance.", image: "/RO4.jpeg", status: "active" },
+  { id: "model-kent-supreme-plus", name: "Kent Supreme Plus", slug: "kent-supreme-plus", brandId: "brand-kent", description: "High-capacity RO unit designed for family convenience and consistent output.", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], status: "active" },
+  { id: "model-aquaguard-essence", name: "AQUAGUARD Essence", slug: "aquaguard-essence", brandId: "brand-aquaguard", description: "Compact countertop RO solution for clean and safe drinking water.", image: "/RO2.jpeg", gallery: ["/RO2.jpeg"], status: "active" },
+  { id: "model-pureit-classic", name: "Pureit Classic", slug: "pureit-classic", brandId: "brand-pureit", description: "Designed for daily filtration needs with simpler service maintenance.", image: "/RO3.jpeg", gallery: ["/RO3.jpeg"], status: "active" },
+  { id: "model-vini-compact", name: "VINI Compact", slug: "vini-compact", brandId: "brand-vini", description: "Value-first RO model built with dependable service support and essential performance.", image: "/RO4.jpeg", gallery: ["/RO4.jpeg"], status: "active" },
 ];
 
 export const defaultAccessories: Accessory[] = [];
@@ -120,6 +130,7 @@ export const products: Product[] = [
     stockStatus: "in-stock",
     badge: "Popular",
     featured: true,
+    bestSeller: true,
     specifications: {
       Capacity: "8 L/hr",
       Technology: "RO + Carbon filtration",
@@ -145,6 +156,7 @@ export const products: Product[] = [
     shortDescription: "Replacement membrane for RO maintenance.",
     sku: "VRO-MEM-02",
     stockStatus: "in-stock",
+    newArrival: true,
     features: ["Reliable performance", "Easy replacement", "Durable build"],
     technology: "Thin-film composite",
     capacity: "Variable by system",
@@ -211,6 +223,7 @@ export const products: Product[] = [
     sku: "VCOMBO-HOME-01",
     stockStatus: "in-stock",
     badge: "Combo",
+    deal: true,
     features: ["Bundle savings", "Essential maintenance kit", "Installation guidance"],
     technology: "RO support package",
     capacity: "Home-ready bundle",
@@ -272,9 +285,106 @@ async function deleteSupabaseRows(table: string, ids: string[]) {
   }
 }
 
+const MAX_LOCAL_STORAGE_IMAGE_CHARS = 180000;
+
+function sanitizeStoredImage(value: string | undefined | null): string | undefined | null {
+  if (!value || typeof value !== "string") return value ?? null;
+
+  if (!value.startsWith("data:image/")) return value;
+  if (value.length <= MAX_LOCAL_STORAGE_IMAGE_CHARS) return value;
+
+  return "/RO1.jpeg";
+}
+
+function sanitizeCatalogValue<T>(value: T): T {
+  if (!value || typeof value !== "object") return value;
+
+  const seen = new WeakSet<object>();
+
+  const visit = (item: unknown): unknown => {
+    if (!item || typeof item !== "object") return item;
+    if (seen.has(item as object)) return item;
+    seen.add(item as object);
+
+    if (Array.isArray(item)) {
+      return item.map((entry) => visit(entry));
+    }
+
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(item as Record<string, unknown>)) {
+      if ((key === "image" || key === "logo") && typeof entry === "string") {
+        result[key] = sanitizeStoredImage(entry);
+      } else if (key === "gallery" && Array.isArray(entry)) {
+        result[key] = entry.map((image) => typeof image === "string" ? sanitizeStoredImage(image) : image).filter(Boolean);
+      } else if (key === "colors" && Array.isArray(entry)) {
+        result[key] = entry.map((color) => ({
+          ...(color as Record<string, unknown>),
+          image: typeof (color as Record<string, unknown>).image === "string" ? sanitizeStoredImage((color as Record<string, unknown>).image as string) : (color as Record<string, unknown>).image,
+        }));
+      } else if (entry && typeof entry === "object") {
+        result[key] = visit(entry);
+      } else {
+        result[key] = entry;
+      }
+    }
+
+    return result;
+  };
+
+  return visit(value) as T;
+}
+
 export function writeLocalCatalog<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+
+  const attemptSave = (payload: string) => {
+    window.localStorage.setItem(key, payload);
+    window.dispatchEvent(new CustomEvent("vini-catalog-updated", { detail: { key } }));
+  };
+
+  try {
+    const sanitized = sanitizeCatalogValue(value);
+    const payload = JSON.stringify(sanitized);
+    attemptSave(payload);
+    return;
+  } catch (error) {
+    console.warn("Catalog storage quota exceeded; retrying with a sanitized payload for", key, error);
+  }
+
+  try {
+    const sanitized = sanitizeCatalogValue(value);
+    const fallback = JSON.stringify(sanitized, (_, item) => {
+      if (typeof item === "string" && item.startsWith("data:image/")) {
+        return "/RO1.jpeg";
+      }
+      return item;
+    });
+    attemptSave(fallback);
+    return;
+  } catch (error) {
+    console.warn("Catalog storage retry failed; clearing stale local catalog entry for", key, error);
+  }
+
+  try {
+    const catalogKeys = ["vini-products", "vini-brands", "vini-models", "vini-accessories"];
+    for (const catalogKey of catalogKeys) {
+      if (catalogKey !== key) {
+        window.localStorage.removeItem(catalogKey);
+      }
+    }
+    window.localStorage.removeItem(key);
+
+    const sanitized = sanitizeCatalogValue(value);
+    const finalPayload = JSON.stringify(sanitized, (_, item) => {
+      if (typeof item === "string" && item.startsWith("data:image/")) {
+        return "/RO1.jpeg";
+      }
+      return item;
+    });
+    attemptSave(finalPayload);
+  } catch {
+    // Ignore: preserve app functionality even when browser storage is full.
+  }
 }
 
 export async function fetchSupabaseCatalog<T>(table: string): Promise<T[] | null> {
@@ -293,13 +403,13 @@ export async function fetchSupabaseCatalog<T>(table: string): Promise<T[] | null
 
 export function getBrandList(): Brand[] {
   const saved = readLocalCatalog<Brand[] | null>("vini-brands", null);
-  const source = saved && saved.length ? saved : brands;
+  const source = saved === null ? brands : saved;
   return source.filter((brand) => brand.status !== "inactive");
 }
 
 export async function getBrandListFromStore(): Promise<Brand[]> {
   const remote = await fetchSupabaseCatalog<Brand>("brands");
-  if (remote && remote.length) return remote.filter((brand) => brand.status !== "inactive");
+  if (remote && remote.length) return remote.map((brand) => ({ ...brand, createdAt: brand.createdAt ?? (brand as Brand & { created_at?: string }).created_at, updatedAt: brand.updatedAt ?? (brand as Brand & { updated_at?: string }).updated_at })).filter((brand) => brand.status !== "inactive");
   return getBrandList();
 }
 
@@ -309,13 +419,24 @@ export function getBrandBySlug(slug: string): Brand | undefined {
 
 export function getModelList(): ProductModel[] {
   const saved = readLocalCatalog<ProductModel[] | null>("vini-models", null);
-  const source = saved && saved.length ? saved : defaultModels;
+  const source = saved === null ? defaultModels : saved;
   return source.filter((model) => model.status !== "inactive");
 }
 
 export async function getModelListFromStore(): Promise<ProductModel[]> {
   const remote = await fetchSupabaseCatalog<ProductModel>("models");
-  if (remote && remote.length) return remote.filter((model) => model.status !== "inactive");
+  if (remote && remote.length) return remote.map((model) => {
+    const row = model as ProductModel & { brand_id?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
+    return {
+      ...model,
+      brandId: model.brandId ?? row.brand_id,
+      colors: Array.isArray(model.colors) ? model.colors : [],
+      newArrival: model.newArrival ?? row.new_arrival ?? false,
+      bestSeller: model.bestSeller ?? row.best_seller ?? false,
+      createdAt: model.createdAt ?? row.created_at,
+      updatedAt: model.updatedAt ?? row.updated_at,
+    };
+  }).filter((model) => model.status !== "inactive");
   return getModelList();
 }
 
@@ -331,7 +452,7 @@ export function getAccessoryList(): Accessory[] {
 
 export async function getAccessoryListFromStore(): Promise<Accessory[]> {
   const remote = await fetchSupabaseCatalog<Accessory>("accessories");
-  if (remote && remote.length) return remote.filter((item) => item.status !== "inactive");
+  if (remote && remote.length) return remote.map((item) => ({ ...item, shortDescription: item.shortDescription ?? (item as Accessory & { short_description?: string }).short_description ?? "", createdAt: item.createdAt ?? (item as Accessory & { created_at?: string }).created_at, updatedAt: item.updatedAt ?? (item as Accessory & { updated_at?: string }).updated_at })).filter((item) => item.status !== "inactive");
   return getAccessoryList();
 }
 
@@ -350,8 +471,8 @@ export function saveAccessoryList(nextAccessories: Accessory[]) {
     features: accessory.features,
     status: accessory.status,
     featured: accessory.featured ?? false,
-    createdAt: accessory.createdAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: accessory.createdAt ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   })));
 }
 
@@ -424,29 +545,32 @@ export function saveProductsToStore(nextProducts: Product[]) {
     slug: product.slug,
     category: product.category,
     brand: product.brand,
-    brandId: product.brandId,
+    brand_id: product.brandId,
     model: product.model,
-    modelId: product.modelId,
-    modelSlug: product.modelSlug,
+    model_id: product.modelId,
+    model_slug: product.modelSlug,
     price: product.price,
-    compareAtPrice: product.compareAtPrice ?? null,
+    compare_at_price: product.compareAtPrice ?? null,
     inventory: product.inventory,
     image: product.image,
     gallery: product.gallery,
     description: product.description,
-    shortDescription: product.shortDescription,
+    short_description: product.shortDescription,
     badge: product.badge ?? null,
     featured: product.featured ?? false,
+    new_arrival: product.newArrival ?? false,
+    best_seller: product.bestSeller ?? false,
+    deal: product.deal ?? false,
     sku: product.sku,
-    stockStatus: product.stockStatus,
+    stock_status: product.stockStatus,
     status: product.status ?? "active",
     specifications: product.specifications ?? {},
     features: product.features ?? [],
     technology: product.technology ?? null,
     capacity: product.capacity ?? null,
     warranty: product.warranty ?? null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   })));
 }
 
@@ -459,8 +583,8 @@ export function saveBrandList(nextBrands: Brand[]) {
     logo: brand.logo,
     description: brand.description,
     status: brand.status,
-    createdAt: brand.createdAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: brand.createdAt ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   })));
 }
 
@@ -470,24 +594,31 @@ export function saveModelList(nextModels: ProductModel[]) {
     id: model.id,
     name: model.name,
     slug: model.slug,
-    brandId: model.brandId,
+    brand_id: model.brandId,
     description: model.description,
     image: model.image,
+    gallery: model.gallery,
+    colors: model.colors ?? [],
+    price: model.price ?? null,
+    new_arrival: model.newArrival ?? false,
+    best_seller: model.bestSeller ?? false,
+    featured: model.featured ?? false,
+    deal: model.deal ?? false,
     status: model.status,
-    createdAt: model.createdAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: model.createdAt ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   })));
 }
 
-export function deleteBrandById(id: string) {
-  const next = getBrandList().filter((brand) => brand.id !== id);
+export function deleteBrandById(id: string, currentBrands = getBrandList()) {
+  const next = currentBrands.filter((brand) => brand.id !== id);
   saveBrandList(next);
   void deleteSupabaseRows("brands", [id]);
   return next;
 }
 
-export function deleteModelById(id: string) {
-  const next = getModelList().filter((model) => model.id !== id);
+export function deleteModelById(id: string, currentModels = getModelList()) {
+  const next = currentModels.filter((model) => model.id !== id);
   saveModelList(next);
   void deleteSupabaseRows("models", [id]);
   return next;
@@ -533,6 +664,13 @@ export function upsertModel(input: Partial<ProductModel> & Pick<ProductModel, "n
     brandId: input.brandId,
     description: input.description ?? "",
     image: input.image ?? "/RO1.jpeg",
+    gallery: input.gallery && input.gallery.length ? input.gallery : [input.image ?? "/RO1.jpeg"],
+    colors: input.colors ?? [],
+    price: input.price,
+    newArrival: input.newArrival ?? false,
+    bestSeller: input.bestSeller ?? false,
+    featured: input.featured ?? false,
+    deal: input.deal ?? false,
     status: input.status ?? "active",
     createdAt: input.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -572,6 +710,9 @@ export function upsertProduct(input: Partial<Product> & Pick<Product, "name" | "
     shortDescription: input.shortDescription ?? input.description ?? "",
     badge: input.badge,
     featured: input.featured ?? false,
+    newArrival: input.newArrival ?? false,
+    bestSeller: input.bestSeller ?? false,
+    deal: input.deal ?? false,
     sku: input.sku ?? `SKU-${slugify(input.name).toUpperCase()}`,
     stockStatus: input.stockStatus ?? "in-stock",
     status: input.status ?? "active",
@@ -628,6 +769,9 @@ export async function getProductsFromStore(): Promise<Product[]> {
       shortDescription: String(row.short_description ?? row.shortDescription ?? String(row.description ?? "")),
       badge: row.badge ? String(row.badge) : undefined,
       featured: Boolean(row.featured),
+      newArrival: Boolean(row.new_arrival ?? row.newArrival),
+      bestSeller: Boolean(row.best_seller ?? row.bestSeller),
+      deal: Boolean(row.deal),
       sku: String(row.sku ?? ""),
       stockStatus: (row.stock_status ?? row.stockStatus ?? "in-stock") as Product["stockStatus"],
       status: (row.status ?? "active") as Product["status"],

@@ -19,7 +19,7 @@ export default function AdminAccessPage() {
     }
   }, [isAuthenticated, router, user]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const normalizedPhone = phone.replace(/\D/g, "");
@@ -35,7 +35,7 @@ export default function AdminAccessPage() {
       return;
     }
 
-    loginAdminAccess();
+    await loginAdminAccess();
     router.replace("/admin");
   }
 

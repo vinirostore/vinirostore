@@ -30,8 +30,10 @@ export default function RegisterPage() {
     const phone = String(formData.get("phone") ?? "").trim();
     const password = String(formData.get("password") ?? "");
     const confirmPassword = String(formData.get("confirmPassword") ?? "");
+    const securityQuestion = String(formData.get("securityQuestion") ?? "").trim();
+    const securityAnswer = String(formData.get("securityAnswer") ?? "").trim();
 
-    if (!name || !email || !phone || !password) {
+    if (!name || !email || !phone || !password || !securityQuestion || !securityAnswer) {
       setError("Please complete all fields to continue.");
       setIsSubmitting(false);
       return;
@@ -49,7 +51,7 @@ export default function RegisterPage() {
       return;
     }
 
-    const result = await registerAccount(name, email, password, phone);
+    const result = await registerAccount(name, email, password, phone, securityQuestion, securityAnswer);
     if (result.error) {
       const normalizedError = result.error.toLowerCase();
       setError(normalizedError.includes("rate limit") || normalizedError.includes("email rate")
@@ -87,6 +89,19 @@ export default function RegisterPage() {
                 className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-sky-300"
                 placeholder="Your full name"
               />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Security question
+              <select name="securityQuestion" required defaultValue="" className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-sky-300">
+                <option value="" disabled>Choose a question</option>
+                <option value="What was the name of your first school?">What was the name of your first school?</option>
+                <option value="What is your childhood nickname?">What is your childhood nickname?</option>
+                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Security answer
+              <input name="securityAnswer" required type="text" className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-sky-300" placeholder="Your answer" />
             </label>
             <label className="block text-sm font-medium text-slate-700">
               Email

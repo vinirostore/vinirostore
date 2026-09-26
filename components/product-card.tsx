@@ -10,8 +10,8 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <article className="group overflow-hidden rounded-3xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-sm">
-      <div className="relative aspect-[4/4.5] overflow-hidden bg-slate-100">
-        <img src={product.image} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]" />
+      <div className="relative aspect-[4/5.75] overflow-hidden bg-slate-100">
+        <img src={product.image} alt={product.name} className="h-full w-full scale-[1.14] object-cover transition duration-500 group-hover:scale-[1.18]" />
         {product.badge ? (
           <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium tracking-[0.12em] text-slate-700 uppercase shadow-sm">
             {product.badge}

@@ -12,8 +12,12 @@ export type AccountUser = {
   createdAt?: string;
 };
 
+export type PasswordRecoveryResult = { error?: string; question?: string; emailReset?: boolean };
+
 export type StoredAccount = AccountUser & {
   password: string;
+  securityQuestion?: string;
+  securityAnswerHash?: string;
   addresses?: Array<{ id: string; label: string; line1: string; city: string; state: string; pincode: string; phone: string; isDefault?: boolean; createdAt?: string; }>;
   notifications?: Record<string, boolean>;
   paymentPreferences?: { method: string; upiId?: string; cardLabel?: string; };
@@ -26,8 +30,11 @@ type AuthState = {
   login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
   requestEmailOtp: (email: string) => Promise<{ error?: string }>;
   verifyEmailOtp: (email: string, token: string) => Promise<{ error?: string }>;
-  registerAccount: (name: string, email: string, password: string, phone?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
-  loginAdminAccess: () => void;
+  registerAccount: (name: string, email: string, password: string, phone?: string, securityQuestion?: string, securityAnswer?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
+  requestPasswordReset: (email: string) => Promise<PasswordRecoveryResult>;
+  resetPasswordWithSecurityAnswer: (email: string, answer: string, newPassword: string) => Promise<{ error?: string }>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ error?: string }>;
+  loginAdminAccess: () => Promise<void>;
   logout: () => void;
 };
 
@@ -59,6 +66,14 @@ export function isValidIndianPhone(phone?: string) {
   if (!phone) return false;
   const digits = phone.replace(/\D/g, "");
   return digits.length === 10 || (digits.length === 12 && digits.startsWith("91"));
+}
+
+async function hashSecurityAnswer(answer: string) {
+  const normalizedAnswer = answer.trim().toLowerCase();
+  if (typeof window === "undefined" || !window.crypto?.subtle) return normalizedAnswer;
+  const bytes = new TextEncoder().encode(normalizedAnswer);
+  const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function readStoredAccounts(): StoredAccount[] {
@@ -153,6 +168,14 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
 
         window.localStorage.setItem(AUTH_KEY, "true");
         window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        await saveCustomerProfile({
+          id: nextUser.id!,
+          fullName: nextUser.name,
+          email: nextUser.email,
+          phone: nextUser.phone,
+          securityQuestion: metadata.securityQuestion ? String(metadata.securityQuestion) : undefined,
+          securityAnswerHash: metadata.securityAnswerHash ? String(metadata.securityAnswerHash) : undefined,
+        });
         setUser(nextUser);
         setIsAuthenticated(true);
       } catch {
@@ -206,6 +229,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
                   data: {
                     name: legacyAccount.name,
                     phone: legacyAccount.phone || "",
+                    securityQuestion: legacyAccount.securityQuestion || "",
+                    securityAnswerHash: legacyAccount.securityAnswerHash || "",
                   },
                 },
               });
@@ -330,11 +355,12 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         return { error: error instanceof Error ? error.message : "Failed to fetch. Please try again." };
       }
     },
-    registerAccount: async (name, email, password, phone) => {
+    registerAccount: async (name, email, password, phone, securityQuestion, securityAnswer) => {
       const normalizedEmail = normalizeEmail(email);
       const sanitizedName = name.trim() || "Customer";
       const normalizedPhone = normalizeIndianPhone(phone);
       const createdAt = new Date().toISOString();
+      const securityAnswerHash = securityAnswer ? await hashSecurityAnswer(securityAnswer) : "";
 
       if (supabase) {
         try {
@@ -346,6 +372,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
               data: {
                 name: sanitizedName,
                 phone: normalizedPhone,
+                securityQuestion: securityQuestion || "",
+                securityAnswerHash,
               },
             },
           });
@@ -364,7 +392,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
 
           window.localStorage.setItem(AUTH_KEY, "true");
           window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone, securityQuestion, securityAnswerHash });
           if (profileResult.error) return { error: profileResult.error };
           setUser(nextUser);
           setIsAuthenticated(true);
@@ -377,6 +405,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
             email: normalizedEmail,
             phone: normalizedPhone,
             password,
+            securityQuestion,
+            securityAnswerHash,
             createdAt,
             addresses: [],
             notifications: { serviceUpdates: true, promos: true, orderStatus: true },
@@ -407,6 +437,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         email: normalizedEmail,
         phone: normalizedPhone,
         password,
+        securityQuestion,
+        securityAnswerHash,
         createdAt,
         addresses: [],
         notifications: { serviceUpdates: true, promos: true, orderStatus: true },
@@ -444,7 +476,51 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       setIsAdminAuthenticated(false);
       return {};
     },
-    loginAdminAccess: () => {
+    requestPasswordReset: async (email) => {
+      const normalizedEmail = normalizeEmail(email);
+      if (supabase) {
+        try {
+          const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+            redirectTo: typeof window !== "undefined" ? `${window.location.origin}/account` : undefined,
+          });
+          return error ? { error: error.message } : { emailReset: true };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : "Unable to send the password reset email." };
+        }
+      }
+
+      const account = getStoredAccountByEmail(normalizedEmail);
+      if (!account) return { error: "No account was found for this email." };
+      if (!account.securityQuestion || !account.securityAnswerHash) return { error: "This account has no security question. Contact support to recover it." };
+      return { question: account.securityQuestion };
+    },
+    resetPasswordWithSecurityAnswer: async (email, answer, newPassword) => {
+      const account = getStoredAccountByEmail(email);
+      if (!account?.securityAnswerHash) return { error: "This account cannot use security-question recovery." };
+      const answerHash = await hashSecurityAnswer(answer);
+      if (answerHash !== account.securityAnswerHash) return { error: "That security answer is incorrect." };
+      saveStoredAccount({ ...account, password: newPassword });
+      return {};
+    },
+    changePassword: async (currentPassword, newPassword) => {
+      if (!user?.email) return { error: "You must be logged in to change your password." };
+      if (supabase) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        return error ? { error: error.message } : {};
+      }
+      const account = getStoredAccountByEmail(user.email);
+      if (!account || account.password !== currentPassword) return { error: "Your current password is incorrect." };
+      saveStoredAccount({ ...account, password: newPassword });
+      return {};
+    },
+    loginAdminAccess: async () => {
+      if (supabase) {
+        try {
+          await supabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+        } catch {
+          // Keep the local admin session available when Supabase admin auth is not configured.
+        }
+      }
       const nextUser: AccountUser = {
         id: "admin-vini-ro",
         name: "VINI RO Admin",

@@ -9,10 +9,13 @@ import { createServiceRequest } from "@/lib/customer-data";
 
 export default function ContactPage() {
   const [status, setStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuthState();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
+
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name") ?? "").trim();
     const email = String(formData.get("email") ?? "").trim();
@@ -25,15 +28,14 @@ export default function ContactPage() {
       return;
     }
 
-    if (!user?.id) {
-      setStatus("Please log in before sending a service request so it can be saved to your account.");
-      return;
-    }
+    setIsSubmitting(true);
 
-    const result = await createServiceRequest({ customerId: user.id, name, email, phone, subject, message: body });
-    if (result.error) {
-      setStatus(result.error);
-      return;
+    let persistenceWarning = "";
+    if (user?.id) {
+      const result = await createServiceRequest({ customerId: user.id, name, email, phone, subject, message: body });
+      if (result.error) {
+        persistenceWarning = " Your WhatsApp booking was prepared, but it could not be saved to your account.";
+      }
     }
 
     const whatsappMessage = [
@@ -44,7 +46,8 @@ export default function ContactPage() {
       `Message: ${body}`,
     ].join("\n");
     window.open(`https://wa.me/919104881806?text=${encodeURIComponent(whatsappMessage)}`, "_blank", "noopener,noreferrer");
-    setStatus("WhatsApp opened with your message ready to review.");
+    setStatus(`WhatsApp opened with your message ready to review.${persistenceWarning}`);
+    setIsSubmitting(false);
   }
 
   return (
@@ -71,7 +74,7 @@ export default function ContactPage() {
               <label className="block text-sm font-medium text-slate-700">Subject<input name="subject" type="text" className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none transition focus:border-sky-300" placeholder="How can we help?" /></label>
               <label className="block text-sm font-medium text-slate-700 sm:col-span-2">Message<textarea name="message" required rows={6} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none transition focus:border-sky-300" placeholder="Tell us how we can help." /></label>
             </div>
-            <button type="submit" className="mt-6 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Open WhatsApp</button>
+            <button type="submit" disabled={isSubmitting} className="mt-6 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting ? "Preparing booking..." : "Open WhatsApp"}</button>
             {status ? <p className="mt-4 text-sm text-slate-600" role="status">{status}</p> : null}
           </form>
         </div>

@@ -38,6 +38,8 @@ export type CustomerProfile = {
   full_name: string;
   email: string;
   phone: string | null;
+  security_question: string | null;
+  security_answer_hash: string | null;
   created_at: string;
 };
 
@@ -46,6 +48,8 @@ export async function saveCustomerProfile(profile: {
   fullName: string;
   email: string;
   phone?: string;
+  securityQuestion?: string;
+  securityAnswerHash?: string;
 }) {
   if (!supabase) return { error: "Database is not configured." };
 
@@ -55,6 +59,8 @@ export async function saveCustomerProfile(profile: {
       email: profile.email,
       full_name: profile.fullName,
       phone: profile.phone || null,
+      security_question: profile.securityQuestion || null,
+      security_answer_hash: profile.securityAnswerHash || null,
     });
 
     return error ? { error: error.message } : {};
@@ -67,7 +73,7 @@ export async function getCustomerAccount(userId: string) {
   if (!supabase) return { profile: null, orders: [], serviceRequests: [], error: "Database is not configured." };
 
   const [profileResult, ordersResult, requestsResult] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,phone,created_at").eq("id", userId).maybeSingle(),
+    supabase.from("profiles").select("full_name,email,phone,security_question,security_answer_hash,created_at").eq("id", userId).maybeSingle(),
     supabase.from("orders").select("id,order_number,status,payment_status,subtotal,gst,shipping,total,created_at,order_items(id,product_id,product_name,product_slug,product_image,sku,unit_price,quantity,line_total)").eq("customer_id", userId).order("created_at", { ascending: false }),
     supabase.from("service_requests").select("id,subject,message,phone,status,created_at").eq("customer_id", userId).order("created_at", { ascending: false }),
   ]);

@@ -3,8 +3,9 @@ import { SiteHeader } from "@/components/site-header";
 import { ProductCatalog } from "@/app/products/product-catalog";
 import { getBrandListFromStore, getProductsFromStore } from "@/lib/catalog";
 
-export default async function ProductsPage() {
+export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ category?: string; search?: string; sort?: string }> }) {
   const [brands, products] = await Promise.all([getBrandListFromStore(), getProductsFromStore()]);
+  const filters = await searchParams;
 
   return (
     <>
@@ -16,7 +17,7 @@ export default async function ProductsPage() {
           <p className="max-w-2xl text-sm leading-7 text-slate-600">Browse the brand-first catalog and move from brand selection to model details before adding your preferred RO product to cart or wishlist.</p>
         </div>
 
-        <ProductCatalog initialBrands={brands} initialProducts={products} />
+        <ProductCatalog initialBrands={brands} initialProducts={products} initialFilters={filters} />
       </main>
       <SiteFooter />
     </>

@@ -1,17 +1,66 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { BrandBackButton } from "@/components/brand-back-button";
 import { SiteHeader } from "@/components/site-header";
-import { getBrandBySlug, getBrandModels, getProductsFromStore } from "@/lib/catalog";
+import { Brand, Product, ProductModel, getBrandListFromStore, getModelListFromStore, getProductsFromStore } from "@/lib/catalog";
 
-export default async function BrandDetailPage({ params }: { params: Promise<{ brand: string }> }) {
-  const { brand: brandSlug } = await params;
-  const brand = getBrandBySlug(brandSlug);
-  if (!brand) notFound();
+export default function BrandDetailPage() {
+  const params = useParams<{ brand: string }>();
+  const brandSlug = params?.brand ?? "";
+  const [brand, setBrand] = useState<Brand | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [catalogModels, setCatalogModels] = useState<ProductModel[]>([]);
+  const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
 
-  const models = getBrandModels(brandSlug);
-  const products = await getProductsFromStore();
-  const brandedProducts = products.filter((product) => product.brandId === brand.id || product.brand === brand.name);
+  useEffect(() => {
+    const syncBrand = async () => {
+      const [nextBrands, nextModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]);
+      const nextBrand = nextBrands.find((item) => item.slug === brandSlug) ?? null;
+      setBrand(nextBrand);
+      setCatalogModels(nextModels);
+      setProducts(nextProducts);
+      setHasLoadedCatalog(true);
+    };
+
+    void syncBrand();
+    const handleCatalogChange = () => { void syncBrand(); };
+    window.addEventListener("vini-catalog-updated", handleCatalogChange);
+    window.addEventListener("storage", handleCatalogChange);
+
+    return () => {
+      window.removeEventListener("vini-catalog-updated", handleCatalogChange);
+      window.removeEventListener("storage", handleCatalogChange);
+    };
+  }, [brandSlug]);
+
+  const models = useMemo(() => (brand ? catalogModels.filter((model) => model.brandId === brand.id) : []), [brand, catalogModels]);
+  const brandedProducts = useMemo(() => (brand ? products.filter((product) => product.brandId === brand.id || product.brand === brand.name) : []), [brand, products]);
+
+  if (!hasLoadedCatalog) {
+    return <main className="mx-auto max-w-4xl px-4 py-16 text-center text-sm text-slate-500">Loading brand...</main>;
+  }
+
+  if (!brand) {
+    return (
+      <>
+        <SiteHeader />
+        <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="rounded-[28px] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Brand</p>
+            <h1 className="mt-3 text-3xl font-semibold text-slate-900">This brand is not available yet.</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600">The brand may still be pending or may not have been saved to the catalog yet.</p>
+            <div className="mt-6 flex justify-center gap-3">
+              <Link href="/brands" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700">Back to brands</Link>
+              <Link href="/products" className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">Browse products</Link>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -11,11 +11,14 @@ import { getCustomerAccount, type CustomerOrder, type CustomerServiceRequest } f
 
 export default function AccountPage() {
   const router = useRouter();
-  const { isAuthenticated, isAdminAuthenticated, logout, user } = useAuthState();
+  const { isAuthenticated, isAdminAuthenticated, logout, user, changePassword } = useAuthState();
   const storedAccount = user ? getStoredAccountByEmail(user.email) : undefined;
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [serviceRequests, setServiceRequests] = useState<CustomerServiceRequest[]>([]);
   const [dataError, setDataError] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -65,6 +68,29 @@ export default function AccountPage() {
     if (typeof window !== "undefined" && window.location.pathname !== "/login") {
       window.location.assign("/login");
     }
+  }
+
+  async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordMessage("");
+    setPasswordError("");
+    const formData = new FormData(event.currentTarget);
+    const currentPassword = String(formData.get("currentPassword") || "");
+    const newPassword = String(formData.get("newPassword") || "");
+    const confirmPassword = String(formData.get("confirmPassword") || "");
+    if (newPassword.length < 6 || newPassword !== confirmPassword) {
+      setPasswordError("Use a matching password of at least 6 characters.");
+      return;
+    }
+    setIsChangingPassword(true);
+    const result = await changePassword(currentPassword, newPassword);
+    setIsChangingPassword(false);
+    if (result.error) {
+      setPasswordError(result.error);
+      return;
+    }
+    event.currentTarget.reset();
+    setPasswordMessage("Your password was changed successfully.");
   }
 
   return (
@@ -132,6 +158,19 @@ export default function AccountPage() {
                 <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Payment preferences: {profile.paymentPreferences.method}</li>
                 <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">Notifications: {Object.values(profile.notifications).filter(Boolean).length} enabled</li>
               </ul>
+            </div>
+
+            <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_20px_40px_rgba(15,23,42,0.04)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Security</p>
+              <h2 className="mt-3 text-xl font-semibold text-slate-900">Change password</h2>
+              <form onSubmit={handlePasswordChange} className="mt-5 space-y-4">
+                <input name="currentPassword" required type="password" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-sky-300" placeholder="Current password" />
+                <input name="newPassword" required type="password" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-sky-300" placeholder="New password" />
+                <input name="confirmPassword" required type="password" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-sky-300" placeholder="Confirm new password" />
+                <button type="submit" disabled={isChangingPassword} className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60">{isChangingPassword ? "Updating..." : "Update password"}</button>
+                {passwordError ? <p className="text-sm text-rose-700" role="alert">{passwordError}</p> : null}
+                {passwordMessage ? <p className="text-sm text-emerald-700" role="status">{passwordMessage}</p> : null}
+              </form>
             </div>
 
             <div className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-slate-900 to-sky-900 p-6 text-white">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, getBrandList, saveBrandList, upsertBrand } from "@/lib/catalog";
+import { Brand, deleteBrandById, getBrandList, saveBrandList, upsertBrand } from "@/lib/catalog";
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -19,8 +19,18 @@ export default function AdminBrandsPage() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "/RO1.jpeg";
-      setForm((current) => ({ ...current, logo: result }));
+      const source = typeof reader.result === "string" ? reader.result : "/RO1.jpeg";
+      const image = new Image();
+      image.onload = () => {
+        const maxSize = 900;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        setForm((current) => ({ ...current, logo: canvas.toDataURL("image/jpeg", 0.78) }));
+      };
+      image.src = source;
     };
     reader.readAsDataURL(file);
   }
@@ -54,8 +64,10 @@ export default function AdminBrandsPage() {
   }
 
   function handleDelete(id: string) {
-    const updated = getBrandList().filter((brand) => brand.id !== id);
-    saveBrandList(updated);
+    const brand = brands.find((item) => item.id === id);
+    if (!brand || !window.confirm(`Delete ${brand.name}? This action cannot be undone.`)) return;
+
+    const updated = deleteBrandById(id, brands);
     setBrands(updated);
   }
 

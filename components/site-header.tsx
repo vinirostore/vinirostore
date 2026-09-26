@@ -1,148 +1,85 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { navItems } from "@/lib/site-config";
-import { useShopState } from "@/components/shop-state";
+import Link from "next/link";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthState } from "@/components/auth-state";
+import { useShopState } from "@/components/shop-state";
 
-const mobileNavItems = [
-  { label: "Home", href: "/" },
-  { label: "Products", href: "/products" },
+const categoryLinks = [
+  { label: "Brands", href: "/brands" },
   { label: "Accessories", href: "/accessories" },
-  { label: "Services", href: "/services" },
-  { label: "About", href: "/about" },
-  { label: "Contact", href: "/contact" },
-  { label: "Wishlist", href: "/wishlist" },
-  { label: "Cart", href: "/cart" },
-  { label: "Account", href: "/account" },
+  { label: "Filters", href: "/accessories?search=filter" },
+  { label: "Membranes", href: "/accessories?search=membrane" },
+  { label: "Combo Offers", href: "/brands" },
+  { label: "AMC & Services", href: "/services" },
 ];
 
-const mobileServiceItems = [
-  { label: "Repair", href: "/services/repair" },
-  { label: "General Service", href: "/services/general-service" },
-  { label: "Maintenance", href: "/services/maintenance" },
-  { label: "AMC", href: "/services/amc" },
-  { label: "Other RO Support", href: "/services/other-ro-support" },
-];
+function AccountIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>;
+}
+
+function WishlistIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 8.6c0 5.2-8.8 10-8.8 10s-8.8-4.8-8.8-10a4.7 4.7 0 0 1 8.8-2.2 4.7 4.7 0 0 1 8.8 2.2Z" /></svg>;
+}
+
+function CartIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h8.9a2 2 0 0 0 2-1.6L22 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
+}
 
 export function SiteHeader() {
-  const pathname = usePathname();
-  const isHome = pathname === "/";
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const router = useRouter();
   const { cartCount, wishlist } = useShopState();
   const { isAuthenticated } = useAuthState();
+  const [query, setQuery] = useState("");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuScrollPosition = useRef(0);
   const accountHref = isAuthenticated ? "/account" : "/login";
 
   useEffect(() => {
     if (!isMenuOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMenuOpen(false);
-    };
-
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setIsMenuOpen(false); };
+    const scrollY = menuScrollPosition.current;
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyPosition = document.body.style.position;
+    const originalBodyTop = document.body.style.top;
+    const originalBodyWidth = document.body.style.width;
+    const originalDocumentOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.documentElement.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.position = originalBodyPosition;
+      document.body.style.top = originalBodyTop;
+      document.body.style.width = originalBodyWidth;
+      document.documentElement.style.overflow = originalDocumentOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      window.scrollTo(0, scrollY);
     };
   }, [isMenuOpen]);
 
-  const closeMenu = () => setIsMenuOpen(false);
-  const handleMenuToggle = () => {
-    setIsMenuOpen((open) => !open);
-  };
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = query.trim();
+    router.push(value ? `/products?search=${encodeURIComponent(value)}` : "/products");
+  }
 
   return (
-    <header className={`site-header premium-header ${isHome ? "home-header" : "inner-header"}`}>
-      <div className="header-inner">
-        <Link href="/" className="mobile-logo-link" aria-label="VINI RO SERVICES home">
-          <span className="nav-wordmark">
-            <Image src="/vini-wordmark.png" alt="VINI RO Services" fill priority sizes="170px" />
-          </span>
-        </Link>
-
-        <nav className="hidden items-center gap-7 md:flex" aria-label="Main navigation">
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className="text-sm font-medium text-slate-200/80 transition hover:text-white">
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="hidden items-center gap-2 sm:gap-3 md:flex">
-          <Link href={accountHref} className="header-action-button inline-flex rounded-full px-4 py-2.5 text-sm font-medium transition">
-            Account
-          </Link>
-          <Link href="/wishlist" className="header-action-button inline-flex rounded-full px-4 py-2.5 text-sm font-medium transition">
-            Wishlist ({wishlist.length})
-          </Link>
-          <Link href="/cart" className="header-action-button inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition">
-            Cart
-            <span className="header-action-count rounded-full px-2 py-0.5 text-[10px] font-semibold">{cartCount}</span>
-          </Link>
-        </div>
-
-        <button
-          type="button"
-          className={`mobile-menu-button md:hidden ${isMenuOpen ? "is-open" : ""}`}
-          aria-label={isMenuOpen ? "Close menu" : "Open menu"}
-          aria-expanded={isMenuOpen}
-          aria-controls="mobile-menu"
-          onClick={handleMenuToggle}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
+    <header className="store-header">
+      <div className="store-header-main">
+        <button type="button" className="store-menu-button" onClick={() => { menuScrollPosition.current = window.scrollY; setIsMenuOpen(true); }} aria-label="Open shopping menu" aria-expanded={isMenuOpen} aria-controls="store-menu-drawer"><span /><span /><span /></button>
+        <Link href="/" className="store-logo" aria-label="VINI RO home"><span className="store-logo-image"><Image src="/vini-wordmark.png" alt="VINI RO" fill priority sizes="150px" /></span></Link>
+        <form className="store-search" onSubmit={handleSearch} role="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products, brands & accessories" aria-label="Search products, brands and accessories" /><button type="submit">Search</button></form>
+        <nav className="store-actions" aria-label="Shopping actions"><Link href={accountHref} aria-label="Account"><span className="store-action-icon"><AccountIcon /></span><small>Account</small></Link><Link href="/wishlist" aria-label={`Wishlist, ${wishlist.length} items`}><span className="store-action-icon"><WishlistIcon /></span><small>Wishlist <b>{wishlist.length}</b></small></Link><Link href="/cart" aria-label={`Cart, ${cartCount} items`}><span className="store-action-icon"><CartIcon /></span><small>Cart <b>{cartCount}</b></small></Link></nav>
       </div>
-
-      <div
-        className={`mobile-menu-overlay ${isMenuOpen ? "is-open" : ""}`}
-        onClick={closeMenu}
-        aria-hidden={!isMenuOpen}
-      />
-
-      <div
-        id="mobile-menu"
-        className={`mobile-menu-panel ${isMenuOpen ? "is-open" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Mobile navigation"
-      >
-        <div className="mobile-menu-header">
-          <span className="mobile-menu-title">Menu</span>
-          <button type="button" className="mobile-close-button" aria-label="Close navigation menu" onClick={closeMenu}>
-            ×
-          </button>
-        </div>
-
-        <nav className="mobile-nav" aria-label="Mobile navigation menu">
-          {mobileNavItems.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.label === "Account" ? accountHref : item.href}
-                className={`mobile-nav-item ${isActive ? "active" : ""}`}
-                onClick={closeMenu}
-              >
-                {item.label === "Account" ? (isAuthenticated ? "Account" : "Login / Sign in") : item.label}
-                {item.label === "Cart" ? ` (${cartCount})` : item.label === "Wishlist" ? ` (${wishlist.length})` : ""}
-              </Link>
-            );
-          })}
-          <span className="mobile-menu-section-title">Service support</span>
-          {mobileServiceItems.map((item) => {
-            const isActive = pathname === item.href;
-            return <Link key={item.href} href={item.href} className={`mobile-nav-item mobile-nav-item-nested ${isActive ? "active" : ""}`} onClick={closeMenu}>{item.label}</Link>;
-          })}
-        </nav>
-      </div>
+      <nav className="category-nav" aria-label="Shop categories">{categoryLinks.map((item) => <Link key={`${item.label}-${item.href}`} href={item.href}>{item.label}</Link>)}</nav>
+      <div className={`store-menu-overlay ${isMenuOpen ? "open" : ""}`} onClick={() => setIsMenuOpen(false)} aria-hidden="true" />
+      <aside id="store-menu-drawer" className={`store-menu-drawer ${isMenuOpen ? "open" : ""}`} aria-label="Shopping menu" aria-hidden={!isMenuOpen}><div className="drawer-heading"><strong>Shop VINI RO</strong><button type="button" onClick={() => setIsMenuOpen(false)} aria-label="Close shopping menu">×</button></div><Link href="/" className="store-menu-home" onClick={() => setIsMenuOpen(false)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7" /><path d="M5 9v12h14V9M9 21v-7h6v7" /></svg>Home</Link><nav>{[...categoryLinks, { label: "Wishlist", href: "/wishlist" }, { label: "Orders & account", href: accountHref }, { label: "Help & contact", href: "/help" }].map((item) => <Link key={`${item.label}-${item.href}`} href={item.href} onClick={() => setIsMenuOpen(false)}>{item.label}<span aria-hidden="true">→</span></Link>)}</nav></aside>
     </header>
   );
 }

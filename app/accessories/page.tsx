@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAccessoryList, type Accessory } from "@/lib/catalog";
 
 export default function AccessoriesPage() {
   const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setAccessories(getAccessoryList());
+    setSearch(new URLSearchParams(window.location.search).get("search")?.trim().toLowerCase() ?? "");
   }, []);
+
+  const filteredAccessories = useMemo(() => accessories.filter((item) => !search || [item.name, item.category, item.shortDescription, item.description].some((value) => value.toLowerCase().includes(search))), [accessories, search]);
 
   return (
     <>
@@ -25,9 +29,9 @@ export default function AccessoriesPage() {
           </p>
         </div>
 
-        {accessories.length ? (
+        {filteredAccessories.length ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {accessories.map((item) => (
+            {filteredAccessories.map((item) => (
               <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
                 <img src={item.image} alt={item.name} className="h-36 w-full rounded-2xl object-cover" />
                 <h2 className="mt-4 text-lg font-semibold text-slate-900">{item.name}</h2>
