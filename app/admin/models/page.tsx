@@ -6,6 +6,8 @@ import { Brand, ProductModel, deleteModelById, getBrandList, getModelList, saveM
 export default function AdminModelsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [models, setModels] = useState<ProductModel[]>([]);
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [] as Array<{ name: string; image: string }>, price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" as ProductModel["status"] });
 
   useEffect(() => {
@@ -44,9 +46,11 @@ export default function AdminModelsPage() {
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.brandId) return;
+    if (!form.brandId || isSaving) return;
+    setIsSaving(true);
+    setSaveError("");
 
     const next = upsertModel({
       id: form.id || undefined,
@@ -67,7 +71,12 @@ export default function AdminModelsPage() {
 
     const updated = [...getModelList().filter((model) => model.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
     setModels(updated);
-    saveModelList(updated);
+    const error = await saveModelList(updated);
+    setIsSaving(false);
+    if (error) {
+      setSaveError(`Model is only saved in this browser. Supabase: ${error}`);
+      return;
+    }
     setForm({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" });
   }
 
@@ -166,9 +175,10 @@ export default function AdminModelsPage() {
               {([['newArrival', 'New arrival'], ['bestSeller', 'Best seller'], ['deal', 'Deal'], ['featured', 'Featured']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.checked }))} />{label}</label>)}
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Save model</button>
+              <button type="submit" disabled={isSaving} className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60">{isSaving ? "Saving..." : "Save model"}</button>
               <button type="button" onClick={() => setForm({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
             </div>
+            {saveError ? <p className="mt-4 text-sm text-rose-700" role="alert">{saveError}</p> : null}
           </div>
         </form>
 

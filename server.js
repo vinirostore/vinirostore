@@ -11,8 +11,11 @@ app.prepare().then(() => {
   http.createServer((request, response) => {
     const origin = request.headers.origin;
 
-    // Allow the Vini RO Netlify frontend to call the Render backend
-    if (origin === "https://vini-ro-store.netlify.app") {
+    // Allow the Vini RO Netlify and Vercel frontends to call the Render backend
+    if (
+      origin === "https://vini-ro-store.netlify.app" ||
+      origin === "https://vini-ro-store.vercel.app"
+    ) {
       response.setHeader("Access-Control-Allow-Origin", origin);
       response.setHeader("Access-Control-Allow-Credentials", "true");
       response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");

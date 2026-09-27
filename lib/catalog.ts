@@ -588,9 +588,9 @@ export async function saveBrandList(nextBrands: Brand[]) {
   })));
 }
 
-export function saveModelList(nextModels: ProductModel[]) {
+export async function saveModelList(nextModels: ProductModel[]) {
   writeLocalCatalog("vini-models", nextModels);
-  void writeSupabaseRows("models", nextModels.map((model) => ({
+  return writeSupabaseRows("models", nextModels.map((model) => ({
     id: model.id,
     name: model.name,
     slug: model.slug,
