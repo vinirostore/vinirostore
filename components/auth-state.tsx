@@ -185,10 +185,10 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         setIsSupabaseAuthenticated(true);
 
         if (normalizeEmail(sessionUser.email || "") === ADMIN_EMAIL) {
-          const response = await fetch("/api/admin-access", {
-            headers: { Authorization: `Bearer ${data.session!.access_token}` },
-            cache: "no-store",
-          });
+         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+  headers: { Authorization: `Bearer ${data.session!.access_token}` },
+  cache: "no-store",
+});
           const result = await response.json() as { verified?: boolean };
           setIsAdminAuthenticated(Boolean(result.verified));
         } else {
@@ -601,7 +601,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           return { error: "Sign in with the configured admin Supabase account first." };
         }
 
-        const response = await fetch("/api/admin-access", {
+       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
@@ -620,7 +620,10 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     },
     logout: () => {
       if (supabase) void supabase.auth.signOut();
-      void fetch("/api/admin-access", { method: "DELETE", keepalive: true });
+     void fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+  method: "DELETE",
+  keepalive: true,
+});
       window.localStorage.removeItem(AUTH_KEY);
       window.localStorage.removeItem(USER_KEY);
       setUser(null);
