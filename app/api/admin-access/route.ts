@@ -57,9 +57,20 @@ export async function POST(request: Request) {
   if (!accessToken || !supabase) {
     return NextResponse.json({ error: "A valid Supabase admin session is required." }, { status: 401 });
   }
-  if (!expectedPhone || !expectedBirthDate || !accessSecret || accessSecret.length < 32) {
-    return NextResponse.json({ error: "Admin verification is not configured on the server." }, { status: 503 });
-  }
+ if (!expectedPhone || !expectedBirthDate || !accessSecret || accessSecret.length < 32) {
+  return NextResponse.json(
+    {
+      error: "Admin verification configuration is incomplete.",
+      config: {
+        phone: !!expectedPhone,
+        birthDate: !!expectedBirthDate,
+        secret: !!accessSecret,
+        secretLength: accessSecret?.length ?? 0,
+      },
+    },
+    { status: 503 }
+  );
+}
 
   const { data, error } = await supabase.auth.getUser(accessToken);
   if (error || !data.user || data.user.email?.trim().toLowerCase() !== ADMIN_EMAIL) {
