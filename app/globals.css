@@ -383,8 +383,7 @@ main:not(.luxury-shell) textarea:focus {
   .shop-section-actions button { display: none; }
   .product-showcase-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; overflow: visible; padding: 0; }
   .product-showcase-list.single-product { grid-template-columns: minmax(0, 1fr); max-width: calc((100% - 10px) / 2); }
-  .product-showcase-item { display: none; min-width: 0; }
-  .product-showcase-item:nth-child(-n + 4) { display: block; }
+  .product-showcase-item { min-width: 0; }
   .product-showcase-item article > div:first-child { aspect-ratio: 1 / 1; }
   .model-showcase-image { aspect-ratio: 1 / .88; }
   .model-showcase-copy { padding: 10px; }

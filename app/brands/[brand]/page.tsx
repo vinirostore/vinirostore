@@ -18,7 +18,15 @@ export default function BrandDetailPage() {
   useEffect(() => {
     const syncBrand = async () => {
       const [nextBrands, nextModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]);
-      const nextBrand = nextBrands.find((item) => item.slug === brandSlug) ?? null;
+      const normalizeBrandRoute = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      let decodedBrandRoute = brandSlug;
+      try {
+        decodedBrandRoute = decodeURIComponent(brandSlug);
+      } catch {
+        // Keep the original route value if it contains malformed encoding.
+      }
+      const routeKey = normalizeBrandRoute(decodedBrandRoute);
+      const nextBrand = nextBrands.find((item) => item.slug === brandSlug || item.slug === decodedBrandRoute || normalizeBrandRoute(item.slug) === routeKey || normalizeBrandRoute(item.name) === routeKey) ?? null;
       setBrand(nextBrand);
       setCatalogModels(nextModels);
       setProducts(nextProducts);

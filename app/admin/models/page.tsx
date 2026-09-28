@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, ProductModel, deleteModelById, getBrandList, getModelList, saveModelList, upsertModel } from "@/lib/catalog";
+import { Brand, ProductModel, deleteModelById, getBrandList, getModelList, saveModelList, slugifyModelName, upsertModel } from "@/lib/catalog";
 
 export default function AdminModelsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -56,7 +56,7 @@ export default function AdminModelsPage() {
       id: form.id || undefined,
       brandId: form.brandId,
       name: form.name,
-      slug: form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      slug: form.slug || slugifyModelName(form.name),
       description: form.description,
       image: form.image || "/RO1.jpeg",
       gallery: form.gallery.length ? form.gallery : [form.image || "/RO1.jpeg"],
@@ -127,11 +127,11 @@ export default function AdminModelsPage() {
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Model name</label>
-              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="VINI Compact" required />
+              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value, slug: slugifyModelName(event.target.value) }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="VINI Compact" required />
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Slug</label>
-              <input value={form.slug} onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="vini-compact" />
+              <input value={form.slug} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="vini-compact" />
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Model image</label>

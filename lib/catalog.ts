@@ -242,6 +242,10 @@ function slugify(value: string): string {
     .slice(0, 80);
 }
 
+export function slugifyModelName(value: string): string {
+  return slugify(value);
+}
+
 function readLocalCatalog<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
 
