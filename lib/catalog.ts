@@ -277,15 +277,16 @@ async function writeSupabaseRows<T>(table: string, rows: T[]) {
 }
 
 async function deleteSupabaseRows(table: string, ids: string[]) {
-  if (!hasSupabaseConfig() || !ids.length) return false;
+  if (!hasSupabaseConfig()) return "Supabase is not configured.";
+  if (!ids.length) return null;
 
   try {
     const { supabase } = await import("@/lib/supabase");
-    if (!supabase) return false;
+    if (!supabase) return "Supabase is not configured.";
     const { error } = await supabase.from(table).delete().in("id", ids);
-    return !error;
-  } catch {
-    return false;
+    return error?.message ?? null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Unable to delete data from Supabase.";
   }
 }
 
@@ -579,8 +580,7 @@ export function saveProductsToStore(nextProducts: Product[]) {
 }
 
 export async function saveBrandList(nextBrands: Brand[]) {
-  writeLocalCatalog("vini-brands", nextBrands);
-  return writeSupabaseRows("brands", nextBrands.map((brand) => ({
+  const error = await writeSupabaseRows("brands", nextBrands.map((brand) => ({
     id: brand.id,
     name: brand.name,
     slug: brand.slug,
@@ -590,11 +590,12 @@ export async function saveBrandList(nextBrands: Brand[]) {
     created_at: brand.createdAt ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })));
+  if (!error) writeLocalCatalog("vini-brands", nextBrands);
+  return error;
 }
 
 export async function saveModelList(nextModels: ProductModel[]) {
-  writeLocalCatalog("vini-models", nextModels);
-  return writeSupabaseRows("models", nextModels.map((model) => ({
+  const error = await writeSupabaseRows("models", nextModels.map((model) => ({
     id: model.id,
     name: model.name,
     slug: model.slug,
@@ -612,20 +613,24 @@ export async function saveModelList(nextModels: ProductModel[]) {
     created_at: model.createdAt ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })));
+  if (!error) writeLocalCatalog("vini-models", nextModels);
+  return error;
 }
 
-export function deleteBrandById(id: string, currentBrands = getBrandList()) {
+export async function deleteBrandById(id: string, currentBrands = getBrandList()) {
+  const error = await deleteSupabaseRows("brands", [id]);
+  if (error) return { brands: currentBrands, error };
   const next = currentBrands.filter((brand) => brand.id !== id);
-  saveBrandList(next);
-  void deleteSupabaseRows("brands", [id]);
-  return next;
+  writeLocalCatalog("vini-brands", next);
+  return { brands: next, error: null };
 }
 
-export function deleteModelById(id: string, currentModels = getModelList()) {
+export async function deleteModelById(id: string, currentModels = getModelList()) {
+  const error = await deleteSupabaseRows("models", [id]);
+  if (error) return { models: currentModels, error };
   const next = currentModels.filter((model) => model.id !== id);
-  saveModelList(next);
-  void deleteSupabaseRows("models", [id]);
-  return next;
+  writeLocalCatalog("vini-models", next);
+  return { models: next, error: null };
 }
 
 export function deleteProductBySlug(slug: string) {
@@ -635,8 +640,7 @@ export function deleteProductBySlug(slug: string) {
 }
 
 export function upsertBrand(input: Partial<Brand> & Pick<Brand, "name">): Brand {
-  const brandsList = getBrandList();
-  const nextBrand: Brand = {
+  return {
     id: input.id ?? `brand-${slugify(input.name)}`,
     name: input.name,
     slug: input.slug ?? slugify(input.name),
@@ -646,22 +650,10 @@ export function upsertBrand(input: Partial<Brand> & Pick<Brand, "name">): Brand 
     createdAt: input.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-
-  const index = brandsList.findIndex((brand) => brand.id === nextBrand.id || brand.slug === nextBrand.slug);
-  const updated = [...brandsList];
-  if (index >= 0) {
-    updated[index] = nextBrand;
-  } else {
-    updated.push(nextBrand);
-  }
-
-  writeLocalCatalog("vini-brands", updated);
-  return nextBrand;
 }
 
 export function upsertModel(input: Partial<ProductModel> & Pick<ProductModel, "name" | "brandId">): ProductModel {
-  const models = getModelList();
-  const nextModel: ProductModel = {
+  return {
     id: input.id ?? `model-${slugify(input.name)}-${input.brandId}`,
     name: input.name,
     slug: input.slug ?? slugify(input.name),
@@ -679,17 +671,6 @@ export function upsertModel(input: Partial<ProductModel> & Pick<ProductModel, "n
     createdAt: input.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-
-  const index = models.findIndex((model) => model.id === nextModel.id || (model.slug === nextModel.slug && model.brandId === nextModel.brandId));
-  const updated = [...models];
-  if (index >= 0) {
-    updated[index] = nextModel;
-  } else {
-    updated.push(nextModel);
-  }
-
-  saveModelList(updated);
-  return nextModel;
 }
 
 export function upsertProduct(input: Partial<Product> & Pick<Product, "name" | "brand" | "brandId" | "price" | "category">): Product {

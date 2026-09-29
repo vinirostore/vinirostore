@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, ProductModel, deleteModelById, getBrandList, getModelList, saveModelList, slugifyModelName, upsertModel } from "@/lib/catalog";
+import { Brand, ProductModel, deleteModelById, getBrandListFromStore, getModelListFromStore, saveModelList, slugifyModelName, upsertModel } from "@/lib/catalog";
 
 export default function AdminModelsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -11,8 +11,10 @@ export default function AdminModelsPage() {
   const [form, setForm] = useState({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [] as Array<{ name: string; image: string }>, price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" as ProductModel["status"] });
 
   useEffect(() => {
-    setBrands(getBrandList());
-    setModels(getModelList());
+    void Promise.all([getBrandListFromStore(), getModelListFromStore()]).then(([nextBrands, nextModels]) => {
+      setBrands(nextBrands);
+      setModels(nextModels);
+    });
   }, []);
 
   const sortedModels = useMemo(() => [...models].sort((a, b) => a.name.localeCompare(b.name)), [models]);
@@ -69,14 +71,14 @@ export default function AdminModelsPage() {
       status: form.status,
     });
 
-    const updated = [...getModelList().filter((model) => model.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
-    setModels(updated);
+    const updated = [...models.filter((model) => model.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
     const error = await saveModelList(updated);
     setIsSaving(false);
     if (error) {
-      setSaveError(`Model is only saved in this browser. Supabase: ${error}`);
+      setSaveError(`Could not save model to Supabase: ${error}`);
       return;
     }
+    setModels(updated);
     setForm({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" });
   }
 
@@ -99,12 +101,19 @@ export default function AdminModelsPage() {
     });
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     const model = models.find((item) => item.id === id);
-    if (!model || !window.confirm(`Delete ${model.name}? This action cannot be undone.`)) return;
+    if (!model || isSaving || !window.confirm(`Delete ${model.name}? This action cannot be undone.`)) return;
 
-    const updated = deleteModelById(id, models);
-    setModels(updated);
+    setIsSaving(true);
+    setSaveError("");
+    const result = await deleteModelById(id, models);
+    setIsSaving(false);
+    if (result.error) {
+      setSaveError(`Could not delete model from Supabase: ${result.error}`);
+      return;
+    }
+    setModels(result.models);
   }
 
   return (
