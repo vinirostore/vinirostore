@@ -20,9 +20,20 @@ export default function BrandModelDetailPage() {
   useEffect(() => {
     const syncCatalog = async () => {
       const [nextBrands, allModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]);
-      const nextBrand = nextBrands.find((item) => item.slug === brandSlug) ?? null;
+      const normalizeRouteSlug = (value: string) => {
+        let decodedValue = value;
+        try {
+          decodedValue = decodeURIComponent(value);
+        } catch {
+          // Keep the original route value if it contains malformed encoding.
+        }
+        return decodedValue.trim().toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      };
+      const normalizedBrandSlug = normalizeRouteSlug(brandSlug);
+      const normalizedModelSlug = normalizeRouteSlug(modelSlug);
+      const nextBrand = nextBrands.find((item) => item.slug === brandSlug || normalizeRouteSlug(item.slug) === normalizedBrandSlug || normalizeRouteSlug(item.name) === normalizedBrandSlug) ?? null;
       const nextModels = nextBrand ? allModels.filter((item) => item.brandId === nextBrand.id) : [];
-      const nextModel = nextModels.find((item) => item.slug === modelSlug) ?? null;
+      const nextModel = nextModels.find((item) => item.slug === modelSlug || normalizeRouteSlug(item.slug) === normalizedModelSlug || normalizeRouteSlug(item.name) === normalizedModelSlug) ?? null;
 
       setBrand(nextBrand);
       setModel(nextModel);
