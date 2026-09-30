@@ -4,7 +4,23 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProductActions } from "@/components/product-actions";
+import { SiteHeader } from "@/components/site-header";
+import { useShopState } from "@/components/shop-state";
 import { Brand, Product, ProductModel, getBrandListFromStore, getModelListFromStore, getProductsFromStore } from "@/lib/catalog";
+
+function ModelPurchaseActions({ product }: { product: Product }) {
+  const { addToCart, isWishlisted, toggleWishlist } = useShopState();
+  const wishlisted = isWishlisted(product.slug);
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      <button type="button" onClick={() => addToCart(product)} className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Add to cart</button>
+      <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700" aria-label={`${wishlisted ? "Remove" : "Add"} ${product.name} ${wishlisted ? "from" : "to"} wishlist`}>
+        {wishlisted ? "♥ Wishlisted" : "♡ Add to wishlist"}
+      </button>
+    </div>
+  );
+}
 
 export default function BrandModelDetailPage() {
   const params = useParams<{ brand: string; model: string }>();
@@ -31,9 +47,9 @@ export default function BrandModelDetailPage() {
       };
       const normalizedBrandSlug = normalizeRouteSlug(brandSlug);
       const normalizedModelSlug = normalizeRouteSlug(modelSlug);
-      const nextBrand = nextBrands.find((item) => item.slug === brandSlug || normalizeRouteSlug(item.slug) === normalizedBrandSlug || normalizeRouteSlug(item.name) === normalizedBrandSlug) ?? null;
+      const nextBrand = nextBrands.find((item) => item.id === brandSlug || normalizeRouteSlug(item.id) === normalizedBrandSlug || item.slug === brandSlug || normalizeRouteSlug(item.slug) === normalizedBrandSlug || normalizeRouteSlug(item.name) === normalizedBrandSlug) ?? null;
       const nextModels = nextBrand ? allModels.filter((item) => item.brandId === nextBrand.id) : [];
-      const nextModel = nextModels.find((item) => item.slug === modelSlug || normalizeRouteSlug(item.slug) === normalizedModelSlug || normalizeRouteSlug(item.name) === normalizedModelSlug) ?? null;
+      const nextModel = nextModels.find((item) => item.id === modelSlug || normalizeRouteSlug(item.id) === normalizedModelSlug || item.slug === modelSlug || normalizeRouteSlug(item.slug) === normalizedModelSlug || normalizeRouteSlug(item.name) === normalizedModelSlug) ?? null;
 
       setBrand(nextBrand);
       setModel(nextModel);
@@ -63,11 +79,13 @@ export default function BrandModelDetailPage() {
   }, [brand, model, modelProducts, modelSlug, products]);
 
   if (!hasLoadedCatalog) {
-    return <main className="mx-auto max-w-4xl px-4 py-16 text-center text-sm text-slate-500">Loading model...</main>;
+    return <><SiteHeader /><main className="mx-auto max-w-4xl px-4 py-16 text-center text-sm text-slate-500">Loading model...</main></>;
   }
 
   if (!brand || !model) {
     return (
+      <>
+      <SiteHeader />
       <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="rounded-[28px] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Model unavailable</p>
@@ -79,6 +97,7 @@ export default function BrandModelDetailPage() {
           </div>
         </div>
       </main>
+      </>
     );
   }
 
@@ -87,9 +106,31 @@ export default function BrandModelDetailPage() {
   const galleryImages = (mainProduct?.gallery?.length ? mainProduct.gallery : model.gallery?.length ? model.gallery : [model.image]).filter(Boolean);
   const displayTitle = mainProduct?.name ?? model.name;
   const displayDescription = mainProduct?.description ?? model.description;
+  const modelCartProduct: Product = mainProduct ?? {
+    id: `model:${model.id}`,
+    name: model.name,
+    slug: `model-${model.slug}`,
+    category: "ro",
+    brand: brand.name,
+    brandId: brand.id,
+    model: model.name,
+    modelId: model.id,
+    modelSlug: model.slug,
+    price: model.price ?? 0,
+    inventory: 1,
+    image: model.image,
+    gallery: model.gallery?.length ? model.gallery : [model.image],
+    description: model.description,
+    shortDescription: model.description,
+    sku: `MODEL-${model.id}`,
+    stockStatus: "in-stock",
+    status: model.status,
+  };
 
   if (!mainProduct) {
     return (
+      <>
+      <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{brand.name} / {model.name}</p>
@@ -122,21 +163,24 @@ export default function BrandModelDetailPage() {
               <ul className="mt-4 space-y-3 text-sm text-slate-700">
                 <li><span className="font-medium text-slate-900">Brand:</span> {brand.name}</li>
                 <li><span className="font-medium text-slate-900">Model:</span> {model.name}</li>
-                <li><span className="font-medium text-slate-900">Status:</span> This model is available for selection but no product variant has been created yet.</li>
+                <li><span className="font-medium text-slate-900">Status:</span> {model.status === "active" ? "Available" : "Unavailable"}</li>
               </ul>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Link href="/products" className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Shop available products</Link>
+              <ModelPurchaseActions product={modelCartProduct} />
               <Link href={`/brands/${brand.slug}`} className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700">View all models</Link>
             </div>
           </div>
         </div>
       </main>
+      </>
     );
   }
 
   return (
+    <>
+    <SiteHeader />
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{brand.name} / {model.name}</p>
@@ -195,5 +239,6 @@ export default function BrandModelDetailPage() {
         </div>
       </div>
     </main>
+    </>
   );
 }

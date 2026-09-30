@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { useAuthState } from "@/components/auth-state";
 
@@ -39,13 +39,15 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [wishlistItems, setWishlistItems] = useState<Product[]>([]);
   const [notice, setNotice] = useState<ShopNotice | null>(null);
+  const hydratedStorageKey = useRef<string | null>(null);
   const { user } = useAuthState();
 
   useEffect(() => {
     const cartKey = getScopedStorageKey(CART_KEY, user?.email);
     const wishlistKey = getScopedStorageKey(WISHLIST_KEY, user?.email);
+    hydratedStorageKey.current = null;
 
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       try {
         const storedCart = window.localStorage.getItem(cartKey);
         const storedWishlist = window.localStorage.getItem(wishlistKey);
@@ -60,16 +62,21 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
         setWishlist([]);
         setWishlistItems([]);
       }
+      hydratedStorageKey.current = cartKey;
     }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [user?.email]);
 
   useEffect(() => {
     const cartKey = getScopedStorageKey(CART_KEY, user?.email);
+    if (hydratedStorageKey.current !== cartKey) return;
     window.localStorage.setItem(cartKey, JSON.stringify(cart));
   }, [cart, user?.email]);
 
   useEffect(() => {
     const wishlistKey = getScopedStorageKey(WISHLIST_KEY, user?.email);
+    if (hydratedStorageKey.current !== getScopedStorageKey(CART_KEY, user?.email)) return;
     window.localStorage.setItem(wishlistKey, JSON.stringify(wishlist));
     window.localStorage.setItem(`${wishlistKey}:items`, JSON.stringify(wishlistItems));
   }, [wishlist, wishlistItems, user?.email]);

@@ -336,6 +336,7 @@ main:not(.luxury-shell) textarea:focus {
 .model-showcase-copy .shop-eyebrow { margin-bottom: 4px; font-size: .58rem; }
 .model-showcase-copy h3 { margin: 0; color: #183047; font-size: 1rem; }
 .model-showcase-copy strong { color: #183047; font-size: .95rem; white-space: nowrap; }
+.mobile-model-catalog { display: none; }
 .category-section { padding-top: 22px; }
 .category-rail { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .category-card { position: relative; min-height: 164px; overflow: hidden; padding: 20px; border-radius: 8px; background: white; box-shadow: 0 5px 18px rgba(28,55,72,.05); }
@@ -377,6 +378,18 @@ main:not(.luxury-shell) textarea:focus {
   .storefront-hero-image, .storefront-hero-image img { min-height: 230px; height: 230px; }
   .storefront-hero h1 { font-size: 2.65rem; }
   .shop-section { padding-top: 34px; }
+  .desktop-model-showcases { display: none; }
+  .mobile-model-catalog { display: block; }
+  .mobile-model-list { display: grid; gap: 10px; }
+  .mobile-model-card { display: grid; grid-template-columns: 98px minmax(0, 1fr); min-height: 112px; overflow: hidden; border: 1px solid #dbe5ea; border-radius: 8px; background: white; box-shadow: 0 4px 12px rgba(28, 55, 72, .05); }
+  .mobile-model-image { min-height: 112px; overflow: hidden; background: #eef5f7; }
+  .mobile-model-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .mobile-model-copy { min-width: 0; padding: 9px 10px; }
+  .mobile-model-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-bottom: 7px; }
+  .mobile-model-badges span { padding: 3px 6px; border-radius: 3px; background: #e8f5f6; color: #12677c; font-size: .57rem; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+  .mobile-model-brand { display: block; overflow: hidden; color: #64748b; font-size: .62rem; font-weight: 700; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+  .mobile-model-copy h3 { margin: 3px 0 0; color: #183047; font-size: .86rem; line-height: 1.25; }
+  .mobile-model-copy strong { display: block; margin-top: 7px; color: #183047; font-size: .82rem; }
   .shop-section-heading { align-items: start; }
   .shop-section-actions { flex-wrap: wrap; justify-content: end; }
   .shop-section-actions a { width: 100%; text-align: right; margin: 0 0 4px; }

@@ -12,6 +12,29 @@ function ModelCard({ model }: { model: ProductModel }) {
   </Link>;
 }
 
+function MobileModelCard({ model }: { model: ProductModel }) {
+  const brand = getBrandList().find((item) => item.id === model.brandId);
+  const brandSlug = brand?.slug ?? model.brandId;
+  const badges = [
+    [model.newArrival, "New arrival"],
+    [model.bestSeller, "Best seller"],
+    [model.deal, "Deal"],
+    [model.featured, "Featured"],
+  ] as const;
+
+  return <Link href={`/brands/${brandSlug}/${model.slug}`} className="mobile-model-card">
+    <div className="mobile-model-image"><img src={model.image} alt={model.name} /></div>
+    <div className="mobile-model-copy">
+      <div className="mobile-model-badges">
+        {badges.filter(([active]) => active).map(([, label]) => <span key={label}>{label}</span>)}
+      </div>
+      {brand ? <span className="mobile-model-brand">{brand.name}</span> : null}
+          <h3>{model.name}</h3>
+      {model.price !== undefined ? <strong>₹{model.price.toLocaleString("en-IN")}</strong> : null}
+    </div>
+  </Link>;
+}
+
 const categoryMeta = [
   { slug: "ro", label: "RO Purifiers", detail: "Complete water systems", image: "/RO1.jpeg" },
   { slug: "accessories", label: "RO Accessories", detail: "Parts that fit", image: "/RO6.jpeg" },
@@ -90,10 +113,17 @@ export function HomeShopping({ products, models }: { products: Product[]; models
 
       <section className="shop-section category-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Start exploring</span><h2>Shop by category</h2></div></div><div className="category-rail">{categories.map((category) => <Link key={category.slug} href={category.slug === "amc" ? "/services" : category.slug === "accessories" ? "/accessories" : category.slug === "combo-offers" ? "/brands" : `/products?category=${category.slug}`} className="category-card"><img src={category.image} alt="" /><span>{category.label}</span><small>{category.detail}</small><b aria-hidden="true">→</b></Link>)}</div></section>
 
-      <ModelShowcase title="New arrivals" eyebrow="Fresh to the store" models={modelSection("newArrival")} href="/brands" />
-      <ModelShowcase title="Best sellers" eyebrow="Customer favourites" models={modelSection("bestSeller")} href="/brands" />
-      <ModelShowcase title="Deals & offers" eyebrow="Value for your setup" models={modelSection("deal")} href="/brands" />
-      <ModelShowcase title="Featured models" eyebrow="Picked by VINI RO" models={modelSection("featured")} href="/brands" />
+      <section className="shop-section mobile-model-catalog">
+        <div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>All models</h2></div></div>
+        <div className="mobile-model-list">{visibleModels.map((model) => <MobileModelCard key={model.id} model={model} />)}</div>
+      </section>
+
+      <div className="desktop-model-showcases">
+        <ModelShowcase title="New arrivals" eyebrow="Fresh to the store" models={modelSection("newArrival")} href="/brands" />
+        <ModelShowcase title="Best sellers" eyebrow="Customer favourites" models={modelSection("bestSeller")} href="/brands" />
+        <ModelShowcase title="Deals & offers" eyebrow="Value for your setup" models={modelSection("deal")} href="/brands" />
+        <ModelShowcase title="Featured models" eyebrow="Picked by VINI RO" models={modelSection("featured")} href="/brands" />
+      </div>
 
       <section className="shop-section trust-band"><div><span className="shop-eyebrow">Why VINI RO</span><h2>Practical products. Reliable support.</h2></div><div className="trust-points"><div><strong>Genuine parts</strong><span>Products selected for dependable RO maintenance.</span></div><div><strong>Clear pricing</strong><span>Live catalog prices with no made-up offers.</span></div><div><strong>Local service</strong><span>Support for Ahmedabad homes and businesses.</span></div></div></section>
     </main>
