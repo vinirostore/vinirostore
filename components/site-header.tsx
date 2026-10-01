@@ -2,10 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthState } from "@/components/auth-state";
 import { useShopState } from "@/components/shop-state";
+import { Accessory, Brand, Product, ProductModel, getAccessoryList, getAccessoryListFromStore, getBrandList, getBrandListFromStore, getModelList, getModelListFromStore, getProductsFromStore, getProductsFromStoreSync } from "@/lib/catalog";
+
+type SearchSuggestion = { id: string; kind: string; name: string; detail: string; href: string; searchTerms: string[] };
 
 const categoryLinks = [
   { label: "Brands", href: "/brands" },
@@ -33,9 +36,57 @@ export function SiteHeader() {
   const { cartCount, wishlist } = useShopState();
   const { isAuthenticated } = useAuthState();
   const [query, setQuery] = useState("");
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [models, setModels] = useState<ProductModel[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [searchCatalogLoaded, setSearchCatalogLoaded] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuScrollPosition = useRef(0);
   const accountHref = isAuthenticated ? "/account" : "/login";
+
+  useEffect(() => {
+    const syncSearchCatalog = async () => {
+      setBrands(getBrandList());
+      setModels(getModelList());
+      setProducts(getProductsFromStoreSync());
+      setAccessories(getAccessoryList());
+      try {
+        const [nextBrands, nextModels, nextProducts, nextAccessories] = await Promise.all([
+          getBrandListFromStore(), getModelListFromStore(), getProductsFromStore(), getAccessoryListFromStore(),
+        ]);
+        setBrands(nextBrands);
+        setModels(nextModels);
+        setProducts(nextProducts);
+        setAccessories(nextAccessories);
+      } finally {
+        setSearchCatalogLoaded(true);
+      }
+    };
+    void syncSearchCatalog();
+
+    const handleCatalogChange = () => { void syncSearchCatalog(); };
+    window.addEventListener("vini-catalog-updated", handleCatalogChange);
+    window.addEventListener("storage", handleCatalogChange);
+    return () => {
+      window.removeEventListener("vini-catalog-updated", handleCatalogChange);
+      window.removeEventListener("storage", handleCatalogChange);
+    };
+  }, []);
+
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const brandById = new Map(brands.map((brand) => [brand.id, brand]));
+  const suggestions: SearchSuggestion[] = normalizedQuery ? [
+    ...brands.map((brand) => ({ id: `brand-${brand.id}`, kind: "Brand", name: brand.name, detail: "Browse brand models", href: `/brands/${encodeURIComponent(brand.slug)}`, searchTerms: [brand.name] })),
+    ...models.map((model) => {
+      const brand = brandById.get(model.brandId);
+      return { id: `model-${model.id}`, kind: "Model", name: model.name, detail: brand?.name ?? "RO model", href: `/brands/${encodeURIComponent(brand?.slug ?? model.brandId)}/${encodeURIComponent(model.slug)}`, searchTerms: [model.name, brand?.name ?? ""] };
+    }),
+    ...products.map((product) => ({ id: `product-${product.id}`, kind: "Product", name: product.name, detail: product.brand || product.category, href: `/products/${encodeURIComponent(product.slug)}`, searchTerms: [product.name, product.model ?? "", product.brand, product.sku] })),
+    ...accessories.map((accessory) => ({ id: `accessory-${accessory.id}`, kind: "Accessory", name: accessory.name, detail: accessory.category, href: `/accessories/${encodeURIComponent(accessory.slug)}`, searchTerms: [accessory.name, accessory.category] })),
+  ].filter((item) => item.searchTerms.some((term) => term.toLocaleLowerCase().startsWith(normalizedQuery))) : [];
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -65,8 +116,30 @@ export function SiteHeader() {
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = query.trim();
-    router.push(value ? `/products?search=${encodeURIComponent(value)}` : "/products");
+    const exactMatch = suggestions.find((item) => item.name.toLocaleLowerCase() === normalizedQuery);
+    const selected = searchCatalogLoaded ? exactMatch ?? suggestions[activeSuggestion] : undefined;
+    setIsSearchOpen(false);
+    router.push(selected?.href ?? (normalizedQuery ? `/products?search=${encodeURIComponent(query.trim())}` : "/products"));
+  }
+
+  function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setIsSearchOpen(false);
+    } else if (event.key === "ArrowDown" && searchCatalogLoaded && suggestions.length) {
+      event.preventDefault();
+      setIsSearchOpen(true);
+      setActiveSuggestion((index) => (index + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp" && searchCatalogLoaded && suggestions.length) {
+      event.preventDefault();
+      setIsSearchOpen(true);
+      setActiveSuggestion((index) => (index <= 0 ? suggestions.length - 1 : index - 1));
+    }
+  }
+
+  function selectSuggestion(suggestion: SearchSuggestion) {
+    setIsSearchOpen(false);
+    setQuery(suggestion.name);
+    router.push(suggestion.href);
   }
 
   return (
@@ -74,7 +147,14 @@ export function SiteHeader() {
       <div className="store-header-main">
         <button type="button" className="store-menu-button" onClick={() => { menuScrollPosition.current = window.scrollY; setIsMenuOpen(true); }} aria-label="Open shopping menu" aria-expanded={isMenuOpen} aria-controls="store-menu-drawer"><span /><span /><span /></button>
         <Link href="/" className="store-logo" aria-label="VINI RO home"><span className="store-logo-image"><Image src="/vini-wordmark.png" alt="VINI RO" fill priority sizes="150px" /></span></Link>
-        <form className="store-search" onSubmit={handleSearch} role="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products, brands & accessories" aria-label="Search products, brands and accessories" /><button type="submit">Search</button></form>
+        <form className="store-search" onSubmit={handleSearch} role="search" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsSearchOpen(false); }}>
+          <span aria-hidden="true">⌕</span>
+          <input value={query} onChange={(event) => { setQuery(event.target.value); setActiveSuggestion(-1); setIsSearchOpen(true); }} onFocus={() => setIsSearchOpen(true)} onKeyDown={handleSearchKeyDown} placeholder="Search products, brands & accessories" aria-label="Search products, brands and accessories" role="combobox" aria-autocomplete="list" aria-expanded={isSearchOpen && Boolean(normalizedQuery)} aria-controls="store-search-results" aria-activedescendant={suggestions[activeSuggestion] ? `search-option-${suggestions[activeSuggestion].id}` : undefined} />
+          <button type="submit">Search</button>
+          {isSearchOpen && normalizedQuery ? <div className="store-search-results" id="store-search-results" role="listbox" aria-label="Search suggestions">
+            {!searchCatalogLoaded ? <p className="store-search-message">Loading suggestions...</p> : suggestions.length ? suggestions.map((suggestion, index) => <button key={suggestion.id} id={`search-option-${suggestion.id}`} type="button" role="option" aria-selected={index === activeSuggestion} className="store-search-result" onMouseEnter={() => setActiveSuggestion(index)} onClick={() => selectSuggestion(suggestion)}><span><strong>{suggestion.name}</strong><small>{suggestion.detail}</small></span><small>{suggestion.kind}</small></button>) : <p className="store-search-message">No matching brands, models, products, or accessories.</p>}
+          </div> : null}
+        </form>
         <nav className="store-actions" aria-label="Shopping actions"><Link href={accountHref} aria-label="Account"><span className="store-action-icon"><AccountIcon /></span><small>Account</small></Link><Link href="/wishlist" aria-label={`Wishlist, ${wishlist.length} items`}><span className="store-action-icon"><WishlistIcon /></span><small>Wishlist <b>{wishlist.length}</b></small></Link><Link href="/cart" aria-label={`Cart, ${cartCount} items`}><span className="store-action-icon"><CartIcon /></span><small>Cart <b>{cartCount}</b></small></Link></nav>
       </div>
       <nav className="category-nav" aria-label="Shop categories">{categoryLinks.map((item) => <Link key={`${item.label}-${item.href}`} href={item.href}>{item.label}</Link>)}</nav>

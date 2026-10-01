@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Product, ProductModel, getBrandList } from "@/lib/catalog";
 
@@ -42,6 +43,29 @@ const categoryMeta = [
   { slug: "amc", label: "AMC & Services", detail: "Care when needed", image: "/RO8.jpeg" },
 ];
 
+const brandLogos = [
+  { name: "AQUA MARS", file: "AQUA MARS LOGO.jpeg" },
+  { name: "AQUA V5", file: "AQUA V5 LOGO.jpeg" },
+  { name: "EMIRA", file: "EMIRA LOGO.jpeg" },
+  { name: "ROTEK", file: "ROTEK LOGO.jpeg" },
+  { name: "LEXON", file: "LEXON LOGO.jpeg" },
+  { name: "AQUA 9", file: "AQUA 9 LOGO.jpeg" },
+];
+
+function BrandLogoMarquee() {
+  return <section className="brand-logo-marquee" aria-label="Brands available at VINI RO">
+    <div className="brand-logo-marquee-viewport">
+      <div className="brand-logo-marquee-track">
+        {[false, true].map((duplicate) => <div key={String(duplicate)} className="brand-logo-marquee-group" aria-hidden={duplicate}>
+          {brandLogos.map((brand) => <div key={brand.name} className="brand-logo-marquee-item">
+            <Image src={`/brand-logos/${encodeURIComponent(brand.file)}`} alt={duplicate ? "" : brand.name} width={180} height={80} />
+          </div>)}
+        </div>)}
+      </div>
+    </div>
+  </section>;
+}
+
 function ModelShowcase({ title, eyebrow, models, href }: { title: string; eyebrow: string; models: ProductModel[]; href: string }) {
   const railRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
@@ -80,7 +104,11 @@ function ModelShowcase({ title, eyebrow, models, href }: { title: string; eyebro
   );
 }
 
-export function HomeShopping({ products, models }: { products: Product[]; models: ProductModel[] }) {
+function ModelsLoading() {
+  return <div className="models-loading" role="status" aria-live="polite"><span aria-hidden="true" />Loading models...</div>;
+}
+
+export function HomeShopping({ products, models, modelsLoaded }: { products: Product[]; models: ProductModel[]; modelsLoaded: boolean }) {
   const [slide, setSlide] = useState(0);
   const heroImages = Array.from(new Set([
     ...models.flatMap((model) => [model.image, ...(model.gallery ?? [])]),
@@ -111,18 +139,22 @@ export function HomeShopping({ products, models }: { products: Product[]; models
         <div key={activeImage} className="storefront-hero-image"><img src={activeImage} alt="RO model" /><div className="hero-image-label"><span>VINI RO</span><strong>Quality water care</strong></div></div>
       </section>
 
+      <BrandLogoMarquee />
+
       <section className="shop-section category-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Start exploring</span><h2>Shop by category</h2></div></div><div className="category-rail">{categories.map((category) => <Link key={category.slug} href={category.slug === "amc" ? "/services" : category.slug === "accessories" ? "/accessories" : category.slug === "combo-offers" ? "/brands" : `/products?category=${category.slug}`} className="category-card"><img src={category.image} alt="" /><span>{category.label}</span><small>{category.detail}</small><b aria-hidden="true">→</b></Link>)}</div></section>
 
       <section className="shop-section mobile-model-catalog">
         <div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>All models</h2></div></div>
-        <div className="mobile-model-list">{visibleModels.map((model) => <MobileModelCard key={model.id} model={model} />)}</div>
+        {!modelsLoaded ? <ModelsLoading /> : visibleModels.length ? <div className="mobile-model-list">{visibleModels.map((model) => <MobileModelCard key={model.id} model={model} />)}</div> : <p className="models-empty">No models are available right now.</p>}
       </section>
 
-      <div className="desktop-model-showcases">
-        <ModelShowcase title="New arrivals" eyebrow="Fresh to the store" models={modelSection("newArrival")} href="/brands" />
-        <ModelShowcase title="Best sellers" eyebrow="Customer favourites" models={modelSection("bestSeller")} href="/brands" />
-        <ModelShowcase title="Deals & offers" eyebrow="Value for your setup" models={modelSection("deal")} href="/brands" />
-        <ModelShowcase title="Featured models" eyebrow="Picked by VINI RO" models={modelSection("featured")} href="/brands" />
+      <div className="desktop-model-showcases" aria-live="polite">
+        {!modelsLoaded ? <section className="shop-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>Models</h2></div></div><ModelsLoading /></section> : visibleModels.length ? <>
+          <ModelShowcase title="New arrivals" eyebrow="Fresh to the store" models={modelSection("newArrival")} href="/brands" />
+          <ModelShowcase title="Best sellers" eyebrow="Customer favourites" models={modelSection("bestSeller")} href="/brands" />
+          <ModelShowcase title="Deals & offers" eyebrow="Value for your setup" models={modelSection("deal")} href="/brands" />
+          <ModelShowcase title="Featured models" eyebrow="Picked by VINI RO" models={modelSection("featured")} href="/brands" />
+        </> : <section className="shop-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>Models</h2></div></div><p className="models-empty">No models are available right now.</p></section>}
       </div>
 
       <section className="shop-section trust-band"><div><span className="shop-eyebrow">Why VINI RO</span><h2>Practical products. Reliable support.</h2></div><div className="trust-points"><div><strong>Genuine parts</strong><span>Products selected for dependable RO maintenance.</span></div><div><strong>Clear pricing</strong><span>Live catalog prices with no made-up offers.</span></div><div><strong>Local service</strong><span>Support for Ahmedabad homes and businesses.</span></div></div></section>
