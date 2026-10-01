@@ -257,6 +257,16 @@ main:not(.luxury-shell) textarea:focus {
 }
 
 .store-header { position: sticky; top: 0; z-index: 1000; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.site-initial-loader { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; background: #f8fafb; opacity: 1; transition: opacity 240ms ease; }
+.site-initial-loader.is-hidden { pointer-events: none; opacity: 0; }
+.site-initial-loader-content { display: grid; justify-items: center; gap: 22px; width: min(320px, 72vw); }
+.site-initial-loader-content img { display: block; width: 100%; height: auto; }
+.site-initial-loader-indicator { position: relative; width: 74px; height: 3px; overflow: hidden; background: #dbe5ea; }
+.site-initial-loader-indicator::after { position: absolute; inset: 0 auto 0 0; width: 35%; background: #0d789e; content: ""; animation: initial-loader-progress 900ms ease-in-out infinite alternate; }
+@keyframes initial-loader-progress { to { transform: translateX(190%); } }
+@media (prefers-reduced-motion: reduce) {
+  .site-initial-loader, .site-initial-loader-indicator::after { transition: none; animation: none; }
+}
 .store-header-main { display: flex; align-items: center; gap: 24px; width: min(1380px, calc(100% - 40px)); min-height: 76px; margin: 0 auto; }
 .store-logo { display: inline-flex; align-items: center; gap: 9px; flex: 0 0 auto; color: #123047; font-size: 1rem; font-weight: 800; letter-spacing: .08em; }
 .store-logo-image { position: relative; display: block; width: 128px; height: 42px; overflow: hidden; }
@@ -302,7 +312,7 @@ main:not(.luxury-shell) textarea:focus {
 
 .storefront-main { min-height: 100vh; background: #f6f8f9; color: #183047; }
 .storefront-hero, .shop-section { width: min(1380px, calc(100% - 40px)); margin: 0 auto; }
-.storefront-hero { display: grid; grid-template-columns: 1fr .85fr; gap: 32px; align-items: center; min-height: 420px; padding: 44px 0; }
+.storefront-hero { display: grid; grid-template-columns: 1fr .85fr; gap: 32px; align-items: center; min-height: 360px; padding: 32px 0; }
 .storefront-hero-copy { padding: 24px 0; }
 .storefront-hero-copy h1,
 .storefront-hero-copy p { animation: hero-copy-enter 420ms ease both; }
@@ -315,14 +325,26 @@ main:not(.luxury-shell) textarea:focus {
 .hero-dots { display: flex; gap: 7px; margin-top: 28px; }
 .hero-dots button { width: 24px; height: 4px; padding: 0; border: 0; border-radius: 2px; background: #cbd5e1; cursor: pointer; }
 .hero-dots button.active { background: #0d789e; }
-.storefront-hero-image { position: relative; min-height: 320px; overflow: hidden; border-radius: 10px; background: #dbeaf0; box-shadow: 0 16px 30px rgba(30, 64, 80, .1); animation: hero-image-enter 520ms ease both; }
+.storefront-hero-image { position: relative; height: min(612px, calc(100vh - 288px)); min-height: 320px; overflow: hidden; border-radius: 10px; background: #dbeaf0; box-shadow: 0 16px 30px rgba(30, 64, 80, .1); animation: hero-image-enter 520ms ease both; container-type: inline-size; }
 @keyframes hero-image-enter { from { opacity: .55; transform: scale(1.015); } to { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
   .storefront-hero-copy h1,
   .storefront-hero-copy p,
   .storefront-hero-image { animation: none; }
+  .hero-model-track { animation: none; }
+  .hero-model-group[aria-hidden="true"] { display: none; }
 }
-.storefront-hero-image img { width: 100%; height: 100%; min-height: 320px; object-fit: cover; }
+.desktop-hero-image { display: block; }
+.desktop-hero-image { background: #fff; }
+.desktop-hero-image img { display: block; width: 100%; height: 100%; background: #fff; object-fit: contain; }
+.mobile-hero-image { display: none; }
+.hero-model-track { display: flex; width: max-content; height: 100%; animation: hero-model-scroll 54s linear infinite; }
+.storefront-hero-image:hover .hero-model-track { animation-play-state: paused; }
+.single-hero-slide .hero-model-track { animation: none; }
+.hero-model-group { display: flex; height: 100%; flex: 0 0 auto; gap: 8px; padding-right: 8px; }
+.hero-model-slide { position: relative; width: calc(50cqw - 4px); height: 100%; min-height: 280px; flex: 0 0 calc(50cqw - 4px); overflow: hidden; background: #f6f8f9; }
+.hero-model-slide img { display: block; width: 100%; height: 100%; min-height: 280px; background: #f6f8f9; object-fit: contain; }
+@keyframes hero-model-scroll { to { transform: translateX(-50%); } }
 .hero-image-label { position: absolute; right: 20px; bottom: 20px; padding: 12px 14px; background: rgba(255,255,255,.92); border-left: 3px solid #0d789e; }
 .hero-image-label span, .hero-image-label strong { display: block; }
 .hero-image-label span { color: #0d789e; font-size: .65rem; font-weight: 800; letter-spacing: .14em; }
@@ -334,6 +356,9 @@ main:not(.luxury-shell) textarea:focus {
 .brand-logo-marquee-group { display: flex; flex: 0 0 auto; align-items: center; gap: clamp(28px, 4vw, 58px); padding: 0 clamp(28px, 4vw, 58px) 0 8px; }
 .brand-logo-marquee-item { display: grid; width: clamp(108px, 11vw, 150px); height: 82px; flex: 0 0 auto; place-items: center; }
 .brand-logo-marquee-item img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.model-image-marquee { margin-top: 10px; }
+.model-image-marquee .brand-logo-marquee-item { width: clamp(132px, 17vw, 210px); height: 112px; overflow: hidden; padding: 6px; border-radius: 8px; background: #dbeaf0; }
+.single-model-marquee .brand-logo-marquee-track { animation: none; }
 @keyframes brand-logo-marquee-scroll { to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) {
   .brand-logo-marquee-viewport { overflow-x: auto; }
@@ -401,10 +426,15 @@ main:not(.luxury-shell) textarea:focus {
   .category-nav { gap: 18px; min-height: 38px; }
   .category-nav a { font-size: .74rem; }
   .storefront-hero { display: flex; flex-direction: column-reverse; align-items: stretch; min-height: 0; gap: 22px; padding: 28px 0 20px; }
-  .storefront-hero-image, .storefront-hero-image img { min-height: 230px; height: 230px; }
+  .storefront-hero-image, .hero-model-slide, .hero-model-slide img { min-height: 230px; height: 230px; }
+  .storefront-hero-image { background: #f6f8f9; }
+  .desktop-hero-image { display: none; }
+  .mobile-hero-image { display: block; }
+  .hero-dots { display: none; }
   .storefront-hero h1 { font-size: 2.65rem; }
   .brand-logo-marquee { width: calc(100% - 24px); margin-top: 8px; }
   .brand-logo-marquee-item { height: 68px; }
+  .model-image-marquee .brand-logo-marquee-item { width: 148px; height: 96px; }
   .shop-section { padding-top: 34px; }
   .desktop-model-showcases { display: none; }
   .mobile-model-catalog { display: block; }

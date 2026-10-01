@@ -76,11 +76,10 @@ export default function CheckoutPage() {
             <h2 className="text-lg font-semibold text-slate-900">Order summary</h2>
             <div className="mt-5 space-y-3 text-sm text-slate-600">
               <div className="flex justify-between"><span>Subtotal</span><span>₹{summary.subtotal.toLocaleString("en-IN")}</span></div>
-              <div className="flex justify-between"><span>GST</span><span>₹{summary.gst.toLocaleString("en-IN")}</span></div>
               <div className="flex justify-between"><span>Shipping</span><span>₹{summary.shipping.toLocaleString("en-IN")}</span></div>
             </div>
             <div className="mt-5 border-t border-slate-200 pt-5 flex justify-between text-base font-semibold text-slate-900">
-              <span>Total</span>
+              <span>Total (incl. GST)</span>
               <span>₹{summary.grandTotal.toLocaleString("en-IN")}</span>
             </div>
             <Link href="/payment-result" className="mt-6 inline-flex w-full items-center justify-center rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700">View payment result</Link>

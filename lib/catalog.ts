@@ -786,9 +786,9 @@ export const serviceCatalog = [
 
 export function calculateOrderSummary(cart: Array<{ product: Product; quantity: number }>) {
   const subtotal = cart.reduce((total, line) => total + line.product.price * line.quantity, 0);
-  const gst = subtotal * 0.18;
+  const gst = subtotal - subtotal / 1.18;
   const shipping = subtotal > 0 && subtotal < 5000 ? 199 : 0;
-  const grandTotal = subtotal + gst + shipping;
+  const grandTotal = subtotal + shipping;
 
   return {
     subtotal,

@@ -66,6 +66,46 @@ function BrandLogoMarquee() {
   </section>;
 }
 
+type HeroSlide = { id: string; name: string; image: string };
+
+function HeroModelCarousel({ slides }: { slides: HeroSlide[] }) {
+  const copies = slides.length > 1 ? [false, true] : [false];
+
+  return <div className={`storefront-hero-image mobile-hero-image ${slides.length < 2 ? "single-hero-slide" : ""}`} role="region" aria-label="RO model images">
+    <div className="hero-model-track" style={{ animationDuration: `${Math.max(slides.length * 3, 9)}s` }}>
+      {copies.map((duplicate) => <div key={String(duplicate)} className="hero-model-group" aria-hidden={duplicate}>
+        {slides.map((slide) => <div key={slide.id} className="hero-model-slide">
+          <img src={slide.image} alt={duplicate ? "" : slide.name} />
+        </div>)}
+      </div>)}
+    </div>
+  </div>;
+}
+
+function DesktopHeroImage({ image }: { image: string }) {
+  return <div key={image} className="storefront-hero-image desktop-hero-image"><img src={image} alt="RO model" /></div>;
+}
+
+function interleaveModelsByBrand(models: ProductModel[]) {
+  const brands = new Map<string, ProductModel[]>();
+  for (const model of models) {
+    const brandModels = brands.get(model.brandId) ?? [];
+    brandModels.push(model);
+    brands.set(model.brandId, brandModels);
+  }
+
+  const groups = Array.from(brands.values());
+  const interleaved: ProductModel[] = [];
+  const longestGroup = Math.max(0, ...groups.map((group) => group.length));
+  for (let index = 0; index < longestGroup; index += 1) {
+    for (let offset = 0; offset < groups.length; offset += 1) {
+      const group = groups[(index + offset) % groups.length];
+      if (group[index]) interleaved.push(group[index]);
+    }
+  }
+  return interleaved;
+}
+
 function ModelShowcase({ title, eyebrow, models, href }: { title: string; eyebrow: string; models: ProductModel[]; href: string }) {
   const railRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
@@ -109,34 +149,35 @@ function ModelsLoading() {
 }
 
 export function HomeShopping({ products, models, modelsLoaded }: { products: Product[]; models: ProductModel[]; modelsLoaded: boolean }) {
-  const [slide, setSlide] = useState(0);
-  const heroImages = Array.from(new Set([
+  const availableHeroImages = Array.from(new Set([
     ...models.flatMap((model) => [model.image, ...(model.gallery ?? [])]),
     ...products.filter((product) => product.newArrival || product.bestSeller || product.featured).map((product) => product.image),
-  ].filter(Boolean))).length ? Array.from(new Set([
-    ...models.flatMap((model) => [model.image, ...(model.gallery ?? [])]),
-    ...products.filter((product) => product.newArrival || product.bestSeller || product.featured).map((product) => product.image),
-  ].filter(Boolean))) : ["/RO1.jpeg", "/RO2.jpeg", "/RO3.jpeg"];
-
+  ].filter(Boolean)));
+  const heroImages = availableHeroImages.length ? availableHeroImages : ["/RO1.jpeg", "/RO2.jpeg", "/RO3.jpeg"];
+  const [heroSlide, setHeroSlide] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setSlide((current) => (current + 1) % heroImages.length), 5000);
+    const timer = window.setInterval(() => setHeroSlide((current) => (current + 1) % heroImages.length), 5000);
     return () => window.clearInterval(timer);
   }, [heroImages.length]);
 
-  const activeImage = heroImages[slide % heroImages.length];
+  const activeHeroImage = heroImages[heroSlide % heroImages.length];
   const visibleProducts = products.filter((product) => product.status !== "inactive");
   const visibleModels = models.filter((model) => model.status !== "inactive");
   const modelSection = (flag: "newArrival" | "bestSeller" | "deal" | "featured") => {
     const flagged = visibleModels.filter((model) => model[flag]);
     return flagged.length ? flagged : visibleModels;
   };
+  const modelHeroSlides = interleaveModelsByBrand(visibleModels.filter((model) => model.image)).map((model) => ({ id: model.id, name: model.name, image: model.image }));
+  const fallbackHeroSlides = heroImages.map((image, index) => ({ id: `fallback-${index}`, name: "Quality water care", image }));
+  const heroSlides = modelsLoaded && modelHeroSlides.length ? modelHeroSlides : fallbackHeroSlides;
   const categories = categoryMeta.filter((category) => category.slug === "amc" || visibleProducts.some((product) => product.category === category.slug));
 
   return (
     <main className="storefront-main">
       <section className="storefront-hero">
-        <div className="storefront-hero-copy"><span className="shop-eyebrow">VINI RO marketplace</span><h1>Pure water, made easier.</h1><p>Shop dependable RO systems, models, and genuine accessories for everyday homes.</p><Link href="/products" className="shop-primary-button">Shop products<span aria-hidden="true">→</span></Link><div className="hero-dots" aria-label="Model images">{heroImages.map((image, index) => <button key={`${image}-${index}`} type="button" className={index === slide % heroImages.length ? "active" : ""} onClick={() => setSlide(index)} aria-label={`Show model image ${index + 1}`} />)}</div></div>
-        <div key={activeImage} className="storefront-hero-image"><img src={activeImage} alt="RO model" /><div className="hero-image-label"><span>VINI RO</span><strong>Quality water care</strong></div></div>
+        <div className="storefront-hero-copy"><span className="shop-eyebrow">VINI RO marketplace</span><h1>Pure water, made easier.</h1><p>Shop dependable RO systems, models, and genuine accessories for everyday homes.</p><Link href="/brands" className="shop-primary-button">Shop products<span aria-hidden="true">→</span></Link><div className="hero-dots" aria-label="Model images">{heroImages.map((image, index) => <button key={`${image}-${index}`} type="button" className={index === heroSlide ? "active" : ""} onClick={() => setHeroSlide(index)} aria-label={`Show model image ${index + 1}`} />)}</div></div>
+        <DesktopHeroImage image={activeHeroImage} />
+        <HeroModelCarousel slides={heroSlides} />
       </section>
 
       <BrandLogoMarquee />
