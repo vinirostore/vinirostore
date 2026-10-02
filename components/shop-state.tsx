@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { useAuthState } from "@/components/auth-state";
 
@@ -14,6 +14,7 @@ type ShopState = {
   wishlist: string[];
   wishlistItems: Product[];
   cartCount: number;
+  clearCart: () => void;
   addToCart: (product: Product) => void;
   removeFromCart: (slug: string) => void;
   updateCartQuantity: (slug: string, quantity: number) => void;
@@ -41,6 +42,7 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
   const [notice, setNotice] = useState<ShopNotice | null>(null);
   const hydratedStorageKey = useRef<string | null>(null);
   const { user } = useAuthState();
+  const clearCart = useCallback(() => setCart([]), []);
 
   useEffect(() => {
     const cartKey = getScopedStorageKey(CART_KEY, user?.email);
@@ -85,6 +87,7 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
     cart,
     wishlist,
     cartCount: cart.reduce((total, line) => total + line.quantity, 0),
+    clearCart,
     addToCart: (product) => {
       setCart((current) => {
         const existing = current.find((line) => line.product.slug === product.slug);
@@ -117,7 +120,7 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
     },
     isWishlisted: (slug) => wishlist.includes(slug),
     wishlistItems,
-  }), [cart, wishlist, wishlistItems]);
+  }), [cart, clearCart, wishlist, wishlistItems]);
 
   return (
     <ShopStateContext.Provider value={value}>

@@ -7,8 +7,12 @@ import { Product, ProductModel, getBrandList } from "@/lib/catalog";
 
 function ModelCard({ model }: { model: ProductModel }) {
   const brandSlug = getBrandList().find((brand) => brand.id === model.brandId)?.slug ?? model.brandId;
+  const colorCount = model.colors?.length ?? 0;
   return <Link href={`/brands/${brandSlug}/${model.slug}`} className="model-showcase-card group">
-    <div className="model-showcase-image"><img src={model.image} alt={model.name} /></div>
+    <div className="model-showcase-image">
+      {colorCount ? <span className="model-colour-count">+{colorCount}</span> : null}
+      <img src={model.image} alt={model.name} />
+    </div>
     <div className="model-showcase-copy"><div><span className="shop-eyebrow">Model</span><h3>{model.name}</h3></div>{model.price !== undefined ? <strong>₹{model.price.toLocaleString("en-IN")}</strong> : null}</div>
   </Link>;
 }
@@ -22,9 +26,13 @@ function MobileModelCard({ model }: { model: ProductModel }) {
     [model.deal, "Deal"],
     [model.featured, "Featured"],
   ] as const;
+  const colorCount = model.colors?.length ?? 0;
 
   return <Link href={`/brands/${brandSlug}/${model.slug}`} className="mobile-model-card">
-    <div className="mobile-model-image"><img src={model.image} alt={model.name} /></div>
+    <div className="mobile-model-image">
+      {colorCount ? <span className="mobile-model-colour-count">+{colorCount}</span> : null}
+      <img src={model.image} alt={model.name} />
+    </div>
     <div className="mobile-model-copy">
       <div className="mobile-model-badges">
         {badges.filter(([active]) => active).map(([, label]) => <span key={label}>{label}</span>)}

@@ -35,6 +35,8 @@ type AuthState = {
   login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
   requestEmailOtp: (email: string) => Promise<{ error?: string }>;
   verifyEmailOtp: (email: string, token: string) => Promise<{ error?: string }>;
+  verifySignupOtp: (email: string, token: string) => Promise<{ error?: string }>;
+  resendSignupOtp: (email: string) => Promise<{ error?: string }>;
   registerAccount: (name: string, email: string, password: string, phone?: string, securityQuestion?: string, securityAnswer?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
   requestPasswordReset: (email: string) => Promise<PasswordRecoveryResult>;
   resetPasswordWithSecurityAnswer: (email: string, answer: string, newPassword: string) => Promise<{ error?: string }>;
@@ -60,6 +62,15 @@ export function normalizeIndianPhone(phone?: string) {
   if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`.trim();
   if (digits.length === 12 && digits.startsWith("91")) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`.trim();
   return phone.trim();
+}
+
+async function readAdminAccessResponse<T>(response: Response): Promise<T | null> {
+  if (!response.headers.get("content-type")?.includes("application/json")) return null;
+  try {
+    return await response.json() as T;
+  } catch {
+    return null;
+  }
 }
 
 export function isValidIndianPhone(phone?: string) {
@@ -185,13 +196,13 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         setIsSupabaseAuthenticated(true);
 
         if (normalizeEmail(sessionUser.email || "") === ADMIN_EMAIL) {
-         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+         const response = await fetch("/api/admin-access", {
   credentials: "include",
   headers: { Authorization: `Bearer ${data.session!.access_token}` },
   cache: "no-store",
 });
-          const result = await response.json() as { verified?: boolean };
-          setIsAdminAuthenticated(Boolean(result.verified));
+          const result = await readAdminAccessResponse<{ verified?: boolean }>(response);
+          setIsAdminAuthenticated(Boolean(response.ok && result?.verified));
         } else {
           setIsAdminAuthenticated(false);
         }
@@ -391,129 +402,106 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         return { error: error instanceof Error ? error.message : "Failed to fetch. Please try again." };
       }
     },
+    verifySignupOtp: async (email, token) => {
+      if (!supabase) return { error: "Email verification is not configured on this website." };
+
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: normalizeEmail(email),
+          token: token.trim(),
+          type: "email",
+        });
+        if (error || !data.user) return { error: error?.message || "The verification code is invalid or expired." };
+
+        const metadata = data.user.user_metadata || {};
+        const nextUser: AccountUser = {
+          id: data.user.id,
+          name: String(metadata.name || "Customer"),
+          email: normalizeEmail(data.user.email || email),
+          phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+          createdAt: data.user.created_at,
+        };
+        const profileResult = await saveCustomerProfile({
+          id: nextUser.id!,
+          fullName: nextUser.name,
+          email: nextUser.email,
+          phone: nextUser.phone,
+          securityQuestion: metadata.securityQuestion ? String(metadata.securityQuestion) : undefined,
+          securityAnswerHash: metadata.securityAnswerHash ? String(metadata.securityAnswerHash) : undefined,
+        });
+        if (profileResult.error) return { error: profileResult.error };
+
+        window.localStorage.setItem(AUTH_KEY, "true");
+        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to verify the signup code." };
+      }
+    },
+    resendSignupOtp: async (email) => {
+      if (!supabase) return { error: "Email verification is not configured on this website." };
+
+      try {
+        const { error } = await supabase.auth.resend({
+          type: "signup",
+          email: normalizeEmail(email),
+        });
+        return error ? { error: error.message } : {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to resend the verification code." };
+      }
+    },
     registerAccount: async (name, email, password, phone, securityQuestion, securityAnswer) => {
+      if (!supabase) return { error: "Email verification is not configured on this website." };
+
       const normalizedEmail = normalizeEmail(email);
       const sanitizedName = name.trim() || "Customer";
       const normalizedPhone = normalizeIndianPhone(phone);
       const createdAt = new Date().toISOString();
       const securityAnswerHash = securityAnswer ? await hashSecurityAnswer(securityAnswer) : "";
 
-      if (supabase) {
-        try {
-          const { data, error } = await supabase.auth.signUp({
-            email: normalizedEmail,
-            password,
-            options: {
-              emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
-              data: {
-                name: sanitizedName,
-                phone: normalizedPhone,
-                securityQuestion: securityQuestion || "",
-                securityAnswerHash,
-              },
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              name: sanitizedName,
+              phone: normalizedPhone,
+              securityQuestion: securityQuestion || "",
+              securityAnswerHash,
             },
-          });
+          },
+        });
 
-          if (error) return { error: error.message };
-          if (!data.user) return { error: "The account could not be created. Please try again." };
-          if (!data.session) return { needsEmailConfirmation: true };
+        if (error) return { error: error.message };
+        if (!data.user) return { error: "The account could not be created. Please try again." };
+        if (!data.session) return { needsEmailConfirmation: true };
 
-          const nextUser: AccountUser = {
-            id: data.user.id,
-            name: sanitizedName,
-            email: normalizedEmail,
-            phone: normalizedPhone || undefined,
-            createdAt: data.user.created_at || createdAt,
-          };
-
-          window.localStorage.setItem(AUTH_KEY, "true");
-          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone, securityQuestion, securityAnswerHash });
-          if (profileResult.error) return { error: profileResult.error };
-          setUser(nextUser);
-          setIsAuthenticated(true);
-          setIsSupabaseAuthenticated(true);
-          setIsAdminAuthenticated(false);
-          return {};
-        } catch (error) {
-          const nextAccount: StoredAccount = {
-            id: `user-${Date.now()}`,
-            name: sanitizedName,
-            email: normalizedEmail,
-            phone: normalizedPhone,
-            password,
-            securityQuestion,
-            securityAnswerHash,
-            createdAt,
-            addresses: [],
-            notifications: { serviceUpdates: true, promos: true, orderStatus: true },
-            paymentPreferences: { method: "cashfree" },
-          };
-
-          saveStoredAccount(nextAccount);
-          const nextUser: AccountUser = {
-            id: nextAccount.id,
-            name: sanitizedName,
-            email: normalizedEmail,
-            phone: normalizedPhone || undefined,
-            createdAt,
-          };
-
-          window.localStorage.setItem(AUTH_KEY, "true");
-          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-          setUser(nextUser);
-          setIsAuthenticated(true);
-          setIsSupabaseAuthenticated(false);
-          setIsAdminAuthenticated(false);
-          return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
-        }
-      }
-
-      const nextAccount: StoredAccount = {
-        id: `user-${Date.now()}`,
-        name: sanitizedName,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        password,
-        securityQuestion,
-        securityAnswerHash,
-        createdAt,
-        addresses: [],
-        notifications: { serviceUpdates: true, promos: true, orderStatus: true },
-        paymentPreferences: { method: "cashfree" },
-      };
-
-      const existingAccount = getStoredAccountByEmail(normalizedEmail);
-      if (existingAccount) {
-        const mergedAccount = {
-          ...existingAccount,
+        const nextUser: AccountUser = {
+          id: data.user.id,
           name: sanitizedName,
           email: normalizedEmail,
-          phone: normalizedPhone || existingAccount.phone,
-          password: password || existingAccount.password,
-          createdAt: existingAccount.createdAt || createdAt,
+          phone: normalizedPhone || undefined,
+          createdAt: data.user.created_at || createdAt,
         };
-        saveStoredAccount(mergedAccount);
-      } else {
-        saveStoredAccount(nextAccount);
+        const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone, securityQuestion, securityAnswerHash });
+        if (profileResult.error) return { error: profileResult.error };
+
+        window.localStorage.setItem(AUTH_KEY, "true");
+        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
       }
-
-      const persistedAccount = getStoredAccountByEmail(normalizedEmail) || nextAccount;
-      const nextUser: AccountUser = {
-        id: persistedAccount.id,
-        name: sanitizedName,
-        email: normalizedEmail,
-        phone: normalizedPhone || persistedAccount.phone,
-        createdAt: persistedAccount.createdAt || createdAt,
-      };
-
-      window.localStorage.setItem(AUTH_KEY, "true");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-      setUser(nextUser);
-      setIsAuthenticated(true);
-      setIsSupabaseAuthenticated(false);
-      setIsAdminAuthenticated(false);
-      return {};
     },
     requestPasswordReset: async (email) => {
       const normalizedEmail = normalizeEmail(email);
@@ -602,7 +590,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           return { error: "Sign in with the configured admin Supabase account first." };
         }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+    const response = await fetch("/api/admin-access", {
   method: "POST",
   credentials: "include",
   headers: {
@@ -611,7 +599,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
   },
   body: JSON.stringify({ phone, birthDate }),
 });
-        const result = await response.json() as { verified?: boolean; error?: string };
+        const result = await readAdminAccessResponse<{ verified?: boolean; error?: string }>(response);
+        if (!result) return { error: "The admin verification endpoint returned an invalid response. Check that this site is deployed with its API routes enabled." };
         if (!response.ok || !result.verified) return { error: result.error || "Admin verification failed." };
 
         setIsAdminAuthenticated(true);
@@ -622,7 +611,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     },
     logout: () => {
       if (supabase) void supabase.auth.signOut();
-   void fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+  void fetch("/api/admin-access", {
   method: "DELETE",
   credentials: "include",
   keepalive: true,

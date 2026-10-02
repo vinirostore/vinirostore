@@ -375,10 +375,11 @@ main:not(.luxury-shell) textarea:focus {
 .product-showcase-item { flex: 0 0 calc(25% - 12px); min-width: 235px; scroll-snap-align: start; }
 .product-showcase-item article { height: 100%; border-radius: 8px; box-shadow: 0 5px 18px rgba(28, 55, 72, .06); }
 .product-showcase-item article > div:first-child { aspect-ratio: 1 / 1; }
-.model-showcase-card { display: block; height: 100%; overflow: hidden; border: 1px solid #dbe5ea; border-radius: 8px; background: white; box-shadow: 0 5px 18px rgba(28, 55, 72, .06); }
+.model-showcase-card { position: relative; display: block; height: 100%; overflow: hidden; border: 1px solid #dbe5ea; border-radius: 8px; background: white; box-shadow: 0 5px 18px rgba(28, 55, 72, .06); }
 .model-showcase-image { aspect-ratio: 1 / 1; overflow: hidden; background: #eef5f7; }
 .model-showcase-image img { width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease; }
 .model-showcase-card:hover .model-showcase-image img { transform: scale(1.04); }
+.model-colour-count, .mobile-model-colour-count { position: absolute; top: 10px; right: 10px; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 8px; border-radius: 999px; background: rgba(15, 23, 42, 0.7); color: white; font-size: .62rem; font-weight: 700; line-height: 1; letter-spacing: 0.02em; }
 .model-showcase-copy { display: flex; align-items: end; justify-content: space-between; gap: 10px; padding: 14px; }
 .model-showcase-copy .shop-eyebrow { margin-bottom: 4px; font-size: .58rem; }
 .model-showcase-copy h3 { margin: 0; color: #183047; font-size: 1rem; }
@@ -439,11 +440,12 @@ main:not(.luxury-shell) textarea:focus {
   .desktop-model-showcases { display: none; }
   .mobile-model-catalog { display: block; }
   .mobile-model-list { display: grid; gap: 10px; }
-  .mobile-model-card { display: grid; grid-template-columns: 98px minmax(0, 1fr); min-height: 112px; overflow: hidden; border: 1px solid #dbe5ea; border-radius: 8px; background: white; box-shadow: 0 4px 12px rgba(28, 55, 72, .05); }
+  .mobile-model-card { position: relative; display: grid; grid-template-columns: 98px minmax(0, 1fr); min-height: 112px; overflow: hidden; border: 1px solid #dbe5ea; border-radius: 8px; background: white; box-shadow: 0 4px 12px rgba(28, 55, 72, .05); }
   .mobile-model-image { min-height: 112px; overflow: hidden; background: #eef5f7; }
   .mobile-model-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .mobile-model-colour-count { top: 8px; right: 8px; min-width: 24px; height: 18px; padding: 0 6px; font-size: .56rem; }
   .mobile-model-copy { min-width: 0; padding: 9px 10px; }
-  .mobile-model-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-bottom: 7px; }
+  .mobile-model-badges { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px; margin-bottom: 7px; }
   .mobile-model-badges span { padding: 3px 6px; border-radius: 3px; background: #e8f5f6; color: #12677c; font-size: .57rem; font-weight: 700; line-height: 1.2; white-space: nowrap; }
   .mobile-model-brand { display: block; overflow: hidden; color: #64748b; font-size: .62rem; font-weight: 700; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
   .mobile-model-copy h3 { margin: 3px 0 0; color: #183047; font-size: .86rem; line-height: 1.25; }

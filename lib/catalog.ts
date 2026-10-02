@@ -15,9 +15,10 @@ export type ProductModel = {
   slug: string;
   brandId: string;
   description: string;
+  colorName?: string;
   image: string;
   gallery: string[];
-  colors?: Array<{ name: string; image: string }>;
+  colors?: Array<{ name: string; image: string; price?: number; isPrimary?: boolean }>;
   price?: number;
   newArrival?: boolean;
   bestSeller?: boolean;
@@ -45,6 +46,37 @@ export type Accessory = {
   updatedAt?: string;
 };
 
+type AccessoryCategoryOption = { value: string; label: string };
+type AccessoryCategoryGroup = { label: string; categories: AccessoryCategoryOption[] };
+
+export const accessoryCategoryGroups: AccessoryCategoryGroup[] = [
+  {
+    label: "RO Parts",
+    categories: [
+      { value: "general", label: "Accessories" },
+      { value: "filters", label: "Filters" },
+      { value: "membranes", label: "Membranes" },
+      { value: "fittings", label: "Fittings" },
+      { value: "service", label: "Service" },
+    ],
+  },
+  {
+    label: "Combo & Offers",
+    categories: [
+      { value: "combo-offers", label: "Combo Offers" },
+      { value: "bulk-order", label: "Bulk Order" },
+    ],
+  },
+];
+
+export function getAccessoryCategoryLabel(value: string) {
+  return accessoryCategoryGroups.flatMap((group) => group.categories).find((category) => category.value === value)?.label || value;
+}
+
+export function getAccessoryCategoryGroupLabel(value: string) {
+  return accessoryCategoryGroups.find((group) => group.categories.some((category) => category.value === value))?.label || "Other";
+}
+
 export type Category = {
   id: string;
   name: string;
@@ -63,6 +95,7 @@ export type Product = {
   model?: string;
   modelId?: string;
   modelSlug?: string;
+  selectedColorName?: string;
   price: number;
   compareAtPrice?: number;
   inventory: number;
@@ -431,11 +464,17 @@ export function getModelList(): ProductModel[] {
 export async function getModelListFromStore(): Promise<ProductModel[]> {
   const remote = await fetchSupabaseCatalog<ProductModel>("models");
   if (remote && remote.length) return remote.map((model) => {
-    const row = model as ProductModel & { brand_id?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
+    const row = model as ProductModel & { brand_id?: string; color_name?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
+    const storedColors = Array.isArray(model.colors) ? model.colors : [];
+    const primaryColor = storedColors.find((color) => color.isPrimary);
     return {
       ...model,
       brandId: model.brandId ?? row.brand_id,
-      colors: Array.isArray(model.colors) ? model.colors : [],
+      colorName: model.colorName ?? row.color_name ?? primaryColor?.name ?? "",
+      colors: storedColors.filter((color) => !color.isPrimary).map((color) => ({
+        ...color,
+        price: color.price === undefined ? undefined : Number(color.price),
+      })),
       newArrival: model.newArrival ?? row.new_arrival ?? false,
       bestSeller: model.bestSeller ?? row.best_seller ?? false,
       createdAt: model.createdAt ?? row.created_at,
@@ -457,13 +496,21 @@ export function getAccessoryList(): Accessory[] {
 
 export async function getAccessoryListFromStore(): Promise<Accessory[]> {
   const remote = await fetchSupabaseCatalog<Accessory>("accessories");
-  if (remote && remote.length) return remote.map((item) => ({ ...item, shortDescription: item.shortDescription ?? (item as Accessory & { short_description?: string }).short_description ?? "", createdAt: item.createdAt ?? (item as Accessory & { created_at?: string }).created_at, updatedAt: item.updatedAt ?? (item as Accessory & { updated_at?: string }).updated_at })).filter((item) => item.status !== "inactive");
+  if (remote !== null) return remote.map((item) => {
+    const row = item as Accessory & { short_description?: string; created_at?: string; updated_at?: string };
+    return {
+      ...item,
+      shortDescription: item.shortDescription ?? row.short_description ?? "",
+      features: Array.isArray(item.features) ? item.features : [],
+      createdAt: item.createdAt ?? row.created_at,
+      updatedAt: item.updatedAt ?? row.updated_at,
+    };
+  }).filter((item) => item.status !== "inactive");
   return getAccessoryList();
 }
 
-export function saveAccessoryList(nextAccessories: Accessory[]) {
-  writeLocalCatalog("vini-accessories", nextAccessories);
-  void writeSupabaseRows("accessories", nextAccessories.map((accessory) => ({
+export async function saveAccessoryList(nextAccessories: Accessory[]) {
+  const error = await writeSupabaseRows("accessories", nextAccessories.map((accessory) => ({
     id: accessory.id,
     name: accessory.name,
     slug: accessory.slug,
@@ -471,7 +518,7 @@ export function saveAccessoryList(nextAccessories: Accessory[]) {
     price: accessory.price,
     stock: accessory.stock,
     image: accessory.image,
-    shortDescription: accessory.shortDescription,
+    short_description: accessory.shortDescription,
     description: accessory.description,
     features: accessory.features,
     status: accessory.status,
@@ -479,10 +526,11 @@ export function saveAccessoryList(nextAccessories: Accessory[]) {
     created_at: accessory.createdAt ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })));
+  if (!error) writeLocalCatalog("vini-accessories", nextAccessories);
+  return error;
 }
 
 export function upsertAccessory(input: Partial<Accessory> & Pick<Accessory, "name" | "price">): Accessory {
-  const accessories = getAccessoryList();
   const nextAccessory: Accessory = {
     id: input.id ?? `accessory-${slugify(input.name)}`,
     name: input.name,
@@ -500,23 +548,15 @@ export function upsertAccessory(input: Partial<Accessory> & Pick<Accessory, "nam
     updatedAt: new Date().toISOString(),
   };
 
-  const index = accessories.findIndex((item) => item.id === nextAccessory.id || item.slug === nextAccessory.slug);
-  const updated = [...accessories];
-  if (index >= 0) {
-    updated[index] = nextAccessory;
-  } else {
-    updated.push(nextAccessory);
-  }
-
-  saveAccessoryList(updated);
   return nextAccessory;
 }
 
-export function deleteAccessoryById(id: string) {
-  const next = getAccessoryList().filter((item) => item.id !== id);
-  saveAccessoryList(next);
-  void deleteSupabaseRows("accessories", [id]);
-  return next;
+export async function deleteAccessoryById(id: string, currentAccessories = getAccessoryList()) {
+  const error = await deleteSupabaseRows("accessories", [id]);
+  if (error) return { accessories: currentAccessories, error };
+  const next = currentAccessories.filter((item) => item.id !== id);
+  writeLocalCatalog("vini-accessories", next);
+  return { accessories: next, error: null };
 }
 
 export function getBrandModels(brandSlug: string): ProductModel[] {
@@ -603,7 +643,10 @@ export async function saveModelList(nextModels: ProductModel[]) {
     description: model.description,
     image: model.image,
     gallery: model.gallery,
-    colors: model.colors ?? [],
+    colors: [
+      ...(model.colorName ? [{ name: model.colorName, image: model.image, price: model.price, isPrimary: true }] : []),
+      ...(model.colors ?? []).filter((color) => !color.isPrimary).map((color) => ({ ...color, isPrimary: false })),
+    ],
     price: model.price ?? null,
     new_arrival: model.newArrival ?? false,
     best_seller: model.bestSeller ?? false,
@@ -659,6 +702,7 @@ export function upsertModel(input: Partial<ProductModel> & Pick<ProductModel, "n
     slug: input.slug ?? slugify(input.name),
     brandId: input.brandId,
     description: input.description ?? "",
+    colorName: input.colorName ?? "",
     image: input.image ?? "/RO1.jpeg",
     gallery: input.gallery && input.gallery.length ? input.gallery : [input.image ?? "/RO1.jpeg"],
     colors: input.colors ?? [],

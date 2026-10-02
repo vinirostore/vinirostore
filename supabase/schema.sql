@@ -22,14 +22,42 @@ create table if not exists public.orders (
   shipping_name text not null,
   shipping_address text not null,
   shipping_city text not null,
+  shipping_state text not null default '',
   shipping_pincode text not null,
   shipping_phone text not null,
+  shiprocket_order_id text,
+  shiprocket_shipment_id text,
+  shiprocket_awb_code text,
+  shiprocket_courier_name text,
+  shiprocket_tracking_url text,
+  shiprocket_payment_method text,
+  cashfree_order_id text,
+  cashfree_payment_id text,
+  package_weight_kg numeric(8,3),
+  package_length_cm numeric(8,2),
+  package_breadth_cm numeric(8,2),
+  package_height_cm numeric(8,2),
   subtotal numeric(12,2) not null default 0,
   gst numeric(12,2) not null default 0,
   shipping numeric(12,2) not null default 0,
   total numeric(12,2) not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table public.orders add column if not exists shipping_state text not null default '';
+alter table public.orders add column if not exists shiprocket_order_id text;
+alter table public.orders add column if not exists shiprocket_shipment_id text;
+alter table public.orders add column if not exists shiprocket_awb_code text;
+alter table public.orders add column if not exists shiprocket_courier_name text;
+alter table public.orders add column if not exists shiprocket_tracking_url text;
+alter table public.orders add column if not exists shiprocket_payment_method text;
+alter table public.orders add column if not exists cashfree_order_id text;
+alter table public.orders add column if not exists cashfree_payment_id text;
+alter table public.orders add column if not exists package_weight_kg numeric(8,3);
+alter table public.orders add column if not exists package_length_cm numeric(8,2);
+alter table public.orders add column if not exists package_breadth_cm numeric(8,2);
+alter table public.orders add column if not exists package_height_cm numeric(8,2);
+create unique index if not exists orders_cashfree_order_id_key on public.orders(cashfree_order_id) where cashfree_order_id is not null;
 
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),
@@ -178,11 +206,12 @@ drop policy if exists "Customers can create their profile" on public.profiles;
 create policy "Customers can create their profile" on public.profiles for insert with check (auth.uid() = id);
 drop policy if exists "Customers can update their profile" on public.profiles;
 create policy "Customers can update their profile" on public.profiles for update using (auth.uid() = id);
+drop policy if exists "Admins can view all profiles" on public.profiles;
+create policy "Admins can view all profiles" on public.profiles for select using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 
 drop policy if exists "Customers can view their orders" on public.orders;
 create policy "Customers can view their orders" on public.orders for select using (auth.uid() = customer_id);
 drop policy if exists "Customers can create their orders" on public.orders;
-create policy "Customers can create their orders" on public.orders for insert with check (auth.uid() = customer_id);
 drop policy if exists "Admins can view all orders" on public.orders;
 create policy "Admins can view all orders" on public.orders for select using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 drop policy if exists "Admins can update all orders" on public.orders;
@@ -193,7 +222,6 @@ create policy "Customers can view their order items" on public.order_items for s
 drop policy if exists "Admins can view all order items" on public.order_items;
 create policy "Admins can view all order items" on public.order_items for select using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');
 drop policy if exists "Customers can create their order items" on public.order_items;
-create policy "Customers can create their order items" on public.order_items for insert with check (exists (select 1 from public.orders where orders.id = order_items.order_id and orders.customer_id = auth.uid()));
 
 drop policy if exists "Customers can view their service requests" on public.service_requests;
 create policy "Customers can view their service requests" on public.service_requests for select using (auth.uid() = customer_id);

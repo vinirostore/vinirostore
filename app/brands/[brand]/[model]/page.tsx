@@ -8,6 +8,27 @@ import { SiteHeader } from "@/components/site-header";
 import { useShopState } from "@/components/shop-state";
 import { Brand, Product, ProductModel, getBrandListFromStore, getModelListFromStore, getProductsFromStore } from "@/lib/catalog";
 
+type ModelColorOption = { name: string; image: string; price?: number; isPrimary?: boolean };
+
+function ModelColorSelector({ colors, selectedIndex, onSelect, basePrice }: { colors: ModelColorOption[]; selectedIndex: number; onSelect: (index: number) => void; basePrice: number }) {
+  if (!colors.length) return null;
+
+  return (
+    <div className="mt-5">
+      <p className="text-sm font-medium text-slate-900">Colour</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {colors.map((color, index) => (
+          <button key={`${color.name}-${index}`} type="button" onClick={() => onSelect(index)} aria-pressed={selectedIndex === index} className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${selectedIndex === index ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700"}`}>
+            <img src={color.image} alt="" className="h-6 w-6 rounded-full object-cover" />
+            <span>{color.name}</span>
+            <span className="font-semibold">₹{(color.price ?? basePrice).toLocaleString("en-IN")}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ModelPurchaseActions({ product }: { product: Product }) {
   const { addToCart, isWishlisted, toggleWishlist } = useShopState();
   const wishlisted = isWishlisted(product.slug);
@@ -101,12 +122,18 @@ export default function BrandModelDetailPage() {
     );
   }
 
-  const selectedColor = model.colors?.[selectedColorIndex];
+  const basePrice = mainProduct?.price ?? model.price ?? 0;
+  const hasColorOptions = Boolean(model.colorName || model.colors?.length);
+  const colorOptions: ModelColorOption[] = hasColorOptions ? [
+    { name: model.colorName || "Standard", image: model.image, price: basePrice, isPrimary: true },
+    ...(model.colors ?? []),
+  ] : [];
+  const selectedColor = colorOptions[selectedColorIndex];
   const heroImage = selectedColor?.image ?? mainProduct?.image ?? model.image;
   const galleryImages = (mainProduct?.gallery?.length ? mainProduct.gallery : model.gallery?.length ? model.gallery : [model.image]).filter(Boolean);
   const displayTitle = mainProduct?.name ?? model.name;
   const displayDescription = mainProduct?.description ?? model.description;
-  const modelCartProduct: Product = mainProduct ?? {
+  const baseCartProduct: Product = mainProduct ?? {
     id: `model:${model.id}`,
     name: model.name,
     slug: `model-${model.slug}`,
@@ -126,6 +153,17 @@ export default function BrandModelDetailPage() {
     stockStatus: "in-stock",
     status: model.status,
   };
+  const selectedColorSlug = selectedColor && !selectedColor.isPrimary ? selectedColor.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "";
+  const modelCartProduct: Product = selectedColor ? {
+    ...baseCartProduct,
+    name: selectedColor.isPrimary ? baseCartProduct.name : `${baseCartProduct.name} - ${selectedColor.name}`,
+    slug: selectedColor.isPrimary ? baseCartProduct.slug : `${baseCartProduct.slug}-${selectedColorSlug}`,
+    selectedColorName: model.colorName ? selectedColor.name : undefined,
+    price: selectedColor.price ?? baseCartProduct.price,
+    image: selectedColor.image || baseCartProduct.image,
+    gallery: [selectedColor.image || baseCartProduct.image],
+    sku: selectedColor.isPrimary ? baseCartProduct.sku : `${baseCartProduct.sku}-${selectedColorSlug.toUpperCase()}`,
+  } : baseCartProduct;
 
   if (!mainProduct) {
     return (
@@ -154,8 +192,8 @@ export default function BrandModelDetailPage() {
             <div>
               <h1 className="text-3xl font-semibold text-slate-900 sm:text-4xl">{displayTitle}</h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">{displayDescription}</p>
-              {model.colors?.length ? <div className="mt-5"><p className="text-sm font-medium text-slate-900">Colour</p><div className="mt-3 flex flex-wrap gap-2">{model.colors.map((color, index) => <button key={`${color.name}-${index}`} type="button" onClick={() => setSelectedColorIndex(index)} className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${selectedColorIndex === index ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700"}`}><img src={color.image} alt="" className="h-6 w-6 rounded-full object-cover" />{color.name}</button>)}</div></div> : null}
-              {model.price !== undefined ? <p className="mt-5 text-3xl font-semibold text-slate-900">₹{model.price.toLocaleString("en-IN")}</p> : null}
+              {hasColorOptions ? <ModelColorSelector colors={colorOptions} selectedIndex={selectedColorIndex} onSelect={setSelectedColorIndex} basePrice={basePrice} /> : null}
+              {modelCartProduct.price !== undefined ? <p className="mt-5 text-3xl font-semibold text-slate-900">₹{modelCartProduct.price.toLocaleString("en-IN")}</p> : null}
             </div>
 
             <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-5">
@@ -203,14 +241,14 @@ export default function BrandModelDetailPage() {
 
         <div>
           <p className="text-sm leading-7 text-slate-600">{displayDescription}</p>
-          {model.colors?.length ? <div className="mt-5"><p className="text-sm font-medium text-slate-900">Colour</p><div className="mt-3 flex flex-wrap gap-2">{model.colors.map((color, index) => <button key={`${color.name}-${index}`} type="button" onClick={() => setSelectedColorIndex(index)} className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${selectedColorIndex === index ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700"}`}><img src={color.image} alt="" className="h-6 w-6 rounded-full object-cover" />{color.name}</button>)}</div></div> : null}
+          {hasColorOptions ? <ModelColorSelector colors={colorOptions} selectedIndex={selectedColorIndex} onSelect={setSelectedColorIndex} basePrice={mainProduct.price} /> : null}
           <div className="mt-6 flex items-center gap-3">
-            <span className="text-3xl font-semibold text-slate-900">₹{mainProduct.price.toLocaleString("en-IN")}</span>
-            {mainProduct.compareAtPrice ? <span className="text-lg text-slate-400 line-through">₹{mainProduct.compareAtPrice.toLocaleString("en-IN")}</span> : null}
+            <span className="text-3xl font-semibold text-slate-900">₹{modelCartProduct.price.toLocaleString("en-IN")}</span>
+            {selectedColorIndex === 0 && mainProduct.compareAtPrice ? <span className="text-lg text-slate-400 line-through">₹{mainProduct.compareAtPrice.toLocaleString("en-IN")}</span> : null}
           </div>
 
           <div className="mt-6">
-            <ProductActions product={mainProduct} />
+            <ProductActions product={modelCartProduct} />
           </div>
 
           <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">

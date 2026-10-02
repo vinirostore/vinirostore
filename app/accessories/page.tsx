@@ -1,21 +1,10 @@
-"use client";
-
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { AccessoriesCatalog } from "@/components/accessories-catalog";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { getAccessoryList, type Accessory } from "@/lib/catalog";
+import { getAccessoryListFromStore } from "@/lib/catalog";
 
-export default function AccessoriesPage() {
-  const [accessories, setAccessories] = useState<Accessory[]>([]);
-  const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    setAccessories(getAccessoryList());
-    setSearch(new URLSearchParams(window.location.search).get("search")?.trim().toLowerCase() ?? "");
-  }, []);
-
-  const filteredAccessories = useMemo(() => accessories.filter((item) => !search || [item.name, item.category, item.shortDescription, item.description].some((value) => value.toLowerCase().includes(search))), [accessories, search]);
+export default async function AccessoriesPage({ searchParams }: { searchParams: Promise<{ search?: string; category?: string }> }) {
+  const [{ search, category }, accessories] = await Promise.all([searchParams, getAccessoryListFromStore()]);
 
   return (
     <>
@@ -25,30 +14,10 @@ export default function AccessoriesPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Accessories</p>
           <h1 className="text-3xl font-semibold text-slate-900 sm:text-4xl">Accessories</h1>
           <p className="max-w-2xl text-sm leading-7 text-slate-600">
-            Browse replacement and support accessories for RO systems. This section is currently being prepared.
+            Browse replacement and support accessories for RO systems.
           </p>
         </div>
-
-        {filteredAccessories.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredAccessories.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
-                <img src={item.image} alt={item.name} className="h-36 w-full rounded-2xl object-cover" />
-                <h2 className="mt-4 text-lg font-semibold text-slate-900">{item.name}</h2>
-                <p className="mt-1 text-sm text-slate-600">{item.shortDescription}</p>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-lg font-semibold text-slate-900">₹{item.price.toLocaleString("en-IN")}</span>
-                  <Link href={`/accessories/${item.slug}`} className="text-sm font-medium text-sky-700">View details</Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-[30px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-            <p className="text-lg font-medium text-slate-700">No accessories available right now.</p>
-            <p className="mt-2 text-sm text-slate-500">This page will show accessory listings added from the admin portal.</p>
-          </div>
-        )}
+        <AccessoriesCatalog accessories={accessories} initialSearch={search || ""} initialCategory={category || "all"} />
       </main>
       <SiteFooter />
     </>

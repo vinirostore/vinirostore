@@ -1,21 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Accessory, getAccessoryList, Product } from "@/lib/catalog";
+import { Accessory, getAccessoryCategoryGroupLabel, getAccessoryCategoryLabel, Product } from "@/lib/catalog";
 import { useShopState } from "@/components/shop-state";
 
-export function AccessoryDetail({ slug, initialAccessory }: { slug: string; initialAccessory?: Accessory }) {
-  const [accessory, setAccessory] = useState<Accessory | undefined>(initialAccessory);
+export function AccessoryDetail({ initialAccessory }: { initialAccessory?: Accessory }) {
+  const accessory = initialAccessory;
   const { addToCart, isWishlisted, toggleWishlist } = useShopState();
-
-  useEffect(() => {
-    if (!initialAccessory) {
-      window.setTimeout(() => {
-        setAccessory(getAccessoryList().find((item) => item.slug === slug));
-      }, 0);
-    }
-  }, [initialAccessory, slug]);
 
   if (!accessory) {
     return (
@@ -58,7 +49,7 @@ export function AccessoryDetail({ slug, initialAccessory }: { slug: string; init
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{accessory.category}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{getAccessoryCategoryGroupLabel(accessory.category)} · {getAccessoryCategoryLabel(accessory.category)}</p>
           <h1 className="mt-3 text-3xl font-semibold text-slate-900">{accessory.name}</h1>
           <div className="mt-5 flex items-center gap-3">
             <span className="text-3xl font-semibold text-slate-900">₹{accessory.price.toLocaleString("en-IN")}</span>
