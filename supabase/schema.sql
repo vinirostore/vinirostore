@@ -7,11 +7,17 @@ create table if not exists public.profiles (
   phone text,
   security_question text,
   security_answer_hash text,
+  addresses jsonb not null default '[]'::jsonb,
+  notification_preferences jsonb not null default '{"serviceUpdates":true,"promos":true,"orderStatus":true}'::jsonb,
+  payment_preferences jsonb not null default '{"method":"cashfree"}'::jsonb,
   created_at timestamptz not null default now()
 );
 
 alter table public.profiles add column if not exists security_question text;
 alter table public.profiles add column if not exists security_answer_hash text;
+alter table public.profiles add column if not exists addresses jsonb not null default '[]'::jsonb;
+alter table public.profiles add column if not exists notification_preferences jsonb not null default '{"serviceUpdates":true,"promos":true,"orderStatus":true}'::jsonb;
+alter table public.profiles add column if not exists payment_preferences jsonb not null default '{"method":"cashfree"}'::jsonb;
 
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
@@ -44,6 +50,21 @@ create table if not exists public.orders (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.customer_shop_state (
+  customer_id uuid primary key references auth.users(id) on delete cascade,
+  cart jsonb not null default '[]'::jsonb,
+  wishlist jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.guest_shop_state (
+  guest_id uuid primary key,
+  cart jsonb not null default '[]'::jsonb,
+  wishlist jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '30 days'
+);
+
 alter table public.orders add column if not exists shipping_state text not null default '';
 alter table public.orders add column if not exists shiprocket_order_id text;
 alter table public.orders add column if not exists shiprocket_shipment_id text;
@@ -72,17 +93,49 @@ create table if not exists public.order_items (
   line_total numeric(12,2) not null
 );
 
+create table if not exists public.service_staff (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  display_name text not null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz
+);
+
 create table if not exists public.service_requests (
   id uuid primary key default gen_random_uuid(),
-  customer_id uuid not null references public.profiles(id) on delete cascade,
+  customer_id uuid references auth.users(id) on delete cascade,
+  request_type text not null default 'enquiry' check (request_type in ('service', 'amc', 'enquiry')),
   name text not null,
   email text not null,
   phone text,
   subject text not null,
   message text not null,
+  city text,
+  address text,
+  qr_value text not null unique default gen_random_uuid()::text,
   status text not null default 'open' check (status in ('open', 'in_progress', 'completed', 'cancelled')),
+  completed_by uuid references public.service_staff(user_id) on delete set null,
+  completed_by_name text,
+  completed_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.service_requests alter column customer_id drop not null;
+alter table public.service_requests drop constraint if exists service_requests_customer_id_fkey;
+alter table public.service_requests add constraint service_requests_customer_id_fkey foreign key (customer_id) references auth.users(id) on delete cascade;
+alter table public.service_requests add column if not exists request_type text not null default 'enquiry';
+alter table public.service_requests add column if not exists city text;
+alter table public.service_requests add column if not exists address text;
+alter table public.service_requests add column if not exists qr_value text;
+update public.service_requests set qr_value = gen_random_uuid()::text where qr_value is null;
+alter table public.service_requests alter column qr_value set default gen_random_uuid()::text;
+alter table public.service_requests alter column qr_value set not null;
+create unique index if not exists service_requests_qr_value_key on public.service_requests(qr_value);
+alter table public.service_requests drop constraint if exists service_requests_request_type_check;
+alter table public.service_requests add constraint service_requests_request_type_check check (request_type in ('service', 'amc', 'enquiry'));
+
+alter table public.service_staff enable row level security;
 
 create table if not exists public.brands (
   id text primary key,
@@ -105,6 +158,7 @@ create table if not exists public.models (
   gallery jsonb not null default '[]'::jsonb,
   colors jsonb not null default '[]'::jsonb,
   price numeric,
+  inventory integer not null default 0,
   status text not null default 'active' check (status in ('active', 'inactive')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -113,6 +167,7 @@ create table if not exists public.models (
 alter table public.models add column if not exists gallery jsonb not null default '[]'::jsonb;
 alter table public.models add column if not exists colors jsonb not null default '[]'::jsonb;
 alter table public.models add column if not exists price numeric;
+alter table public.models add column if not exists inventory integer not null default 0;
 alter table public.models add column if not exists new_arrival boolean not null default false;
 alter table public.models add column if not exists best_seller boolean not null default false;
 alter table public.models add column if not exists featured boolean not null default false;
@@ -174,6 +229,8 @@ create table if not exists public.accessories (
 );
 
 alter table public.profiles enable row level security;
+alter table public.customer_shop_state enable row level security;
+alter table public.guest_shop_state enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.service_requests enable row level security;
