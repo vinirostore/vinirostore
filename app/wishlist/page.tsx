@@ -20,17 +20,22 @@ export default function WishlistPage() {
         </div>
 
         {savedProducts.length === 0 ? <div className="rounded-[30px] border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">Your wishlist is empty.</div> : <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {savedProducts.map((product) => (
-            <article key={product.slug} className="rounded-[30px] border border-slate-200 bg-white p-4">
-              <Link href={`/products/${product.slug}`} className="block overflow-hidden rounded-[24px] bg-slate-100"><img src={product.image} alt={product.name} className="h-52 w-full object-cover" /></Link>
-              <h2 className="mt-4 text-lg font-semibold text-slate-900">{product.name}</h2>
-              <p className="mt-2 text-lg font-semibold text-slate-900">₹{product.price.toLocaleString("en-IN")}</p>
-              <div className="mt-4 flex gap-3">
-                <button type="button" onClick={() => addToCart(product)} className="flex-1 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Add to cart</button>
-                <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700">Remove</button>
-              </div>
-            </article>
-          ))}
+          {savedProducts.map((product) => {
+            const itemHref = product.id.startsWith("model:") && product.brandId && product.modelSlug
+              ? `/brands/${product.brandId}/${product.modelSlug}`
+              : `/products/${product.slug}`;
+            return (
+              <article key={product.slug} className="rounded-[30px] border border-slate-200 bg-white p-4">
+                <Link href={itemHref} className="block overflow-hidden rounded-[24px] bg-slate-100"><img src={product.image} alt={product.name} className="h-52 w-full object-cover" /></Link>
+                <h2 className="mt-4 text-lg font-semibold text-slate-900">{product.name}</h2>
+                <p className="mt-2 text-lg font-semibold text-slate-900">₹{product.price.toLocaleString("en-IN")}</p>
+                <div className="mt-4 flex gap-3">
+                  <button type="button" onClick={() => addToCart(product)} className="flex-1 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Add to cart</button>
+                  <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700">Remove</button>
+                </div>
+              </article>
+            );
+          })}
         </div>}
       </main>
       <SiteFooter />

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/product-card";
-import { Brand, Product, getBrandList, getProductsFromStoreSync } from "@/lib/catalog";
+import { Brand, Product, getBrandListFromStore, getProductsFromStore } from "@/lib/catalog";
 
 export function ProductCatalog({ initialBrands, initialProducts, initialFilters }: { initialBrands: Brand[]; initialProducts: Product[]; initialFilters?: { category?: string; search?: string; sort?: string } }) {
   const [brands, setBrands] = useState(initialBrands);
   const [products, setProducts] = useState(initialProducts);
+  const [catalogError, setCatalogError] = useState("");
   const filteredProducts = useMemo(() => {
     const search = initialFilters?.search?.trim().toLowerCase() ?? "";
     const category = initialFilters?.category?.toLowerCase() ?? "";
@@ -24,26 +25,26 @@ export function ProductCatalog({ initialBrands, initialProducts, initialFilters 
 
   useEffect(() => {
     const syncCatalog = () => {
-      const savedBrands = window.localStorage.getItem("vini-brands");
-      const savedProducts = window.localStorage.getItem("vini-products");
-
-      if (savedBrands) setBrands(getBrandList());
-      if (savedProducts) setProducts(getProductsFromStoreSync());
+      void Promise.all([getBrandListFromStore(), getProductsFromStore()])
+        .then(([nextBrands, nextProducts]) => {
+          setBrands(nextBrands);
+          setProducts(nextProducts);
+        })
+        .catch((error: unknown) => setCatalogError(error instanceof Error ? error.message : "Could not refresh the Supabase catalog."));
     };
 
     syncCatalog();
     const handleCatalogChange = () => syncCatalog();
     window.addEventListener("vini-catalog-updated", handleCatalogChange);
-    window.addEventListener("storage", handleCatalogChange);
 
     return () => {
       window.removeEventListener("vini-catalog-updated", handleCatalogChange);
-      window.removeEventListener("storage", handleCatalogChange);
     };
   }, []);
 
   return (
     <>
+      {catalogError ? <p role="alert" className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{catalogError}</p> : null}
       <div className="grid grid-cols-2 gap-6 lg:gap-8">
         {brands.map((brand) => (
           <Link key={brand.id} href={`/brands/${brand.slug}`} className="group flex aspect-square min-h-0 min-w-0 flex-col justify-between overflow-hidden rounded-[30px] border border-slate-200 bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md sm:p-7">

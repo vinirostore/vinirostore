@@ -6,23 +6,31 @@ import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { useAuthState } from "@/components/auth-state";
+import { getAuthReturnPath } from "@/lib/auth-navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { isAuthenticated, registerAccount } = useAuthState();
+  const { isAuthenticated, registerAccount, verifySignupOtp, resendSignupOtp } = useAuthState();
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [awaitingOtp, setAwaitingOtp] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [otp, setOtp] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) router.replace("/account");
+    const destination = getAuthReturnPath();
+    if (isAuthenticated) router.replace(destination);
   }, [isAuthenticated, router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSubmitting) return;
     setError("");
+    setMessage("");
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
     const name = String(formData.get("name") ?? "").trim();
@@ -64,12 +72,45 @@ export default function RegisterPage() {
     }
 
     if (result.needsEmailConfirmation) {
-      setError("Account created. Check your email to confirm the account, then log in.");
+      setRegisteredEmail(email.trim().toLowerCase());
+      setAwaitingOtp(true);
+      setMessage("A six-digit verification code was sent to your email.");
       setIsSubmitting(false);
       return;
     }
 
-    router.push("/account");
+    router.push(getAuthReturnPath());
+  }
+
+  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSubmitting) return;
+    setError("");
+    setMessage("");
+    if (!/^\d{6}$/.test(otp)) {
+      setError("Enter the six-digit code from your email.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const result = await verifySignupOtp(registeredEmail, otp);
+    if (result.error) {
+      setError(result.error);
+      setIsSubmitting(false);
+      return;
+    }
+    router.replace(getAuthReturnPath());
+  }
+
+  async function handleResendOtp() {
+    if (isResending) return;
+    setError("");
+    setMessage("");
+    setIsResending(true);
+    const result = await resendSignupOtp(registeredEmail);
+    if (result.error) setError(result.error);
+    else setMessage("A new verification code was sent to your email.");
+    setIsResending(false);
   }
 
   return (
@@ -79,7 +120,31 @@ export default function RegisterPage() {
         <div className="rounded-[30px] border border-slate-200 bg-white p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Account</p>
           <h1 className="mt-3 text-3xl font-semibold text-slate-900">Create account</h1>
-          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          <form onSubmit={awaitingOtp ? handleVerifyOtp : handleSubmit} className="mt-6 space-y-5">
+            {awaitingOtp ? <>
+              <p className="text-sm leading-6 text-slate-600">Enter the code sent to <span className="font-medium text-slate-900">{registeredEmail}</span> to verify your email and finish creating your account.</p>
+              <label className="block text-sm font-medium text-slate-700">
+                Email verification code
+                <input
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 tracking-[0.3em] outline-none focus:border-sky-300"
+                  placeholder="6-digit code"
+                />
+              </label>
+              <button type="submit" disabled={isSubmitting} className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60">
+                {isSubmitting ? "Verifying..." : "Verify email and create account"}
+              </button>
+              <button type="button" disabled={isResending || isSubmitting} onClick={() => void handleResendOtp()} className="w-full rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {isResending ? "Sending..." : "Resend code"}
+              </button>
+            </> : <>
             <label className="block text-sm font-medium text-slate-700">
               Full name
               <input
@@ -167,10 +232,12 @@ export default function RegisterPage() {
             <button type="submit" disabled={isSubmitting} className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? "Creating account..." : "Create account"}
             </button>
+            </>}
+            {message ? <p className="text-sm text-emerald-700" role="status">{message}</p> : null}
             {error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : null}
           </form>
           <p className="mt-5 text-sm text-slate-600">
-            Already have an account? <Link href="/login" className="font-medium text-sky-700">Login</Link>
+            Already have an account? <Link href="/login" onClick={(event) => { event.preventDefault(); router.push(`/login?returnTo=${encodeURIComponent(getAuthReturnPath())}`); }} className="font-medium text-sky-700">Login</Link>
           </p>
         </div>
       </main>

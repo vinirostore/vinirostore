@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { ServiceBookingForm } from "@/components/service-booking-form";
 import { serviceCatalog } from "@/lib/catalog";
 
 export default async function ServiceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -34,9 +35,9 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/contact" className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Book service</Link>
             <Link href="/services" className="rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700">See all services</Link>
           </div>
+          <ServiceBookingForm serviceName={service.name} requestType={service.slug === "amc" ? "amc" : "service"} returnTo={`/services/${service.slug}`} />
         </div>
       </main>
       <SiteFooter />

@@ -15,10 +15,12 @@ export type ProductModel = {
   slug: string;
   brandId: string;
   description: string;
+  colorName?: string;
   image: string;
   gallery: string[];
-  colors?: Array<{ name: string; image: string }>;
+  colors?: Array<{ name: string; image: string; price?: number; isPrimary?: boolean }>;
   price?: number;
+  inventory?: number;
   newArrival?: boolean;
   bestSeller?: boolean;
   featured?: boolean;
@@ -45,6 +47,37 @@ export type Accessory = {
   updatedAt?: string;
 };
 
+type AccessoryCategoryOption = { value: string; label: string };
+type AccessoryCategoryGroup = { label: string; categories: AccessoryCategoryOption[] };
+
+export const accessoryCategoryGroups: AccessoryCategoryGroup[] = [
+  {
+    label: "RO Parts",
+    categories: [
+      { value: "general", label: "Accessories" },
+      { value: "filters", label: "Filters" },
+      { value: "membranes", label: "Membranes" },
+      { value: "fittings", label: "Fittings" },
+      { value: "service", label: "Service" },
+    ],
+  },
+  {
+    label: "Combo & Offers",
+    categories: [
+      { value: "combo-offers", label: "Combo Offers" },
+      { value: "bulk-order", label: "Bulk Order" },
+    ],
+  },
+];
+
+export function getAccessoryCategoryLabel(value: string) {
+  return accessoryCategoryGroups.flatMap((group) => group.categories).find((category) => category.value === value)?.label || value;
+}
+
+export function getAccessoryCategoryGroupLabel(value: string) {
+  return accessoryCategoryGroups.find((group) => group.categories.some((category) => category.value === value))?.label || "Other";
+}
+
 export type Category = {
   id: string;
   name: string;
@@ -63,6 +96,7 @@ export type Product = {
   model?: string;
   modelId?: string;
   modelSlug?: string;
+  selectedColorName?: string;
   price: number;
   compareAtPrice?: number;
   inventory: number;
@@ -242,16 +276,19 @@ function slugify(value: string): string {
     .slice(0, 80);
 }
 
-function readLocalCatalog<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
+export function slugifyModelName(value: string): string {
+  return slugify(value);
+}
 
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+const catalogMemory = new Map<string, unknown>();
+
+function readCatalogMemory<T>(key: string, fallback: T): T {
+  return (catalogMemory.get(key) as T | undefined) ?? fallback;
+}
+
+function updateCatalogMemory<T>(key: string, value: T) {
+  catalogMemory.set(key, value);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("vini-catalog-updated", { detail: { key } }));
 }
 
 function hasSupabaseConfig() {
@@ -273,143 +310,47 @@ async function writeSupabaseRows<T>(table: string, rows: T[]) {
 }
 
 async function deleteSupabaseRows(table: string, ids: string[]) {
-  if (!hasSupabaseConfig() || !ids.length) return false;
+  if (!hasSupabaseConfig()) return "Supabase is not configured.";
+  if (!ids.length) return null;
 
   try {
     const { supabase } = await import("@/lib/supabase");
-    if (!supabase) return false;
+    if (!supabase) return "Supabase is not configured.";
     const { error } = await supabase.from(table).delete().in("id", ids);
-    return !error;
-  } catch {
-    return false;
-  }
-}
-
-const MAX_LOCAL_STORAGE_IMAGE_CHARS = 180000;
-
-function sanitizeStoredImage(value: string | undefined | null): string | undefined | null {
-  if (!value || typeof value !== "string") return value ?? null;
-
-  if (!value.startsWith("data:image/")) return value;
-  if (value.length <= MAX_LOCAL_STORAGE_IMAGE_CHARS) return value;
-
-  return "/RO1.jpeg";
-}
-
-function sanitizeCatalogValue<T>(value: T): T {
-  if (!value || typeof value !== "object") return value;
-
-  const seen = new WeakSet<object>();
-
-  const visit = (item: unknown): unknown => {
-    if (!item || typeof item !== "object") return item;
-    if (seen.has(item as object)) return item;
-    seen.add(item as object);
-
-    if (Array.isArray(item)) {
-      return item.map((entry) => visit(entry));
-    }
-
-    const result: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(item as Record<string, unknown>)) {
-      if ((key === "image" || key === "logo") && typeof entry === "string") {
-        result[key] = sanitizeStoredImage(entry);
-      } else if (key === "gallery" && Array.isArray(entry)) {
-        result[key] = entry.map((image) => typeof image === "string" ? sanitizeStoredImage(image) : image).filter(Boolean);
-      } else if (key === "colors" && Array.isArray(entry)) {
-        result[key] = entry.map((color) => ({
-          ...(color as Record<string, unknown>),
-          image: typeof (color as Record<string, unknown>).image === "string" ? sanitizeStoredImage((color as Record<string, unknown>).image as string) : (color as Record<string, unknown>).image,
-        }));
-      } else if (entry && typeof entry === "object") {
-        result[key] = visit(entry);
-      } else {
-        result[key] = entry;
-      }
-    }
-
-    return result;
-  };
-
-  return visit(value) as T;
-}
-
-export function writeLocalCatalog<T>(key: string, value: T) {
-  if (typeof window === "undefined") return;
-
-  const attemptSave = (payload: string) => {
-    window.localStorage.setItem(key, payload);
-    window.dispatchEvent(new CustomEvent("vini-catalog-updated", { detail: { key } }));
-  };
-
-  try {
-    const sanitized = sanitizeCatalogValue(value);
-    const payload = JSON.stringify(sanitized);
-    attemptSave(payload);
-    return;
+    return error?.message ?? null;
   } catch (error) {
-    console.warn("Catalog storage quota exceeded; retrying with a sanitized payload for", key, error);
-  }
-
-  try {
-    const sanitized = sanitizeCatalogValue(value);
-    const fallback = JSON.stringify(sanitized, (_, item) => {
-      if (typeof item === "string" && item.startsWith("data:image/")) {
-        return "/RO1.jpeg";
-      }
-      return item;
-    });
-    attemptSave(fallback);
-    return;
-  } catch (error) {
-    console.warn("Catalog storage retry failed; clearing stale local catalog entry for", key, error);
-  }
-
-  try {
-    const catalogKeys = ["vini-products", "vini-brands", "vini-models", "vini-accessories"];
-    for (const catalogKey of catalogKeys) {
-      if (catalogKey !== key) {
-        window.localStorage.removeItem(catalogKey);
-      }
-    }
-    window.localStorage.removeItem(key);
-
-    const sanitized = sanitizeCatalogValue(value);
-    const finalPayload = JSON.stringify(sanitized, (_, item) => {
-      if (typeof item === "string" && item.startsWith("data:image/")) {
-        return "/RO1.jpeg";
-      }
-      return item;
-    });
-    attemptSave(finalPayload);
-  } catch {
-    // Ignore: preserve app functionality even when browser storage is full.
+    return error instanceof Error ? error.message : "Unable to delete data from Supabase.";
   }
 }
 
-export async function fetchSupabaseCatalog<T>(table: string): Promise<T[] | null> {
+export async function fetchSupabaseCatalog<T>(table: string, columns = "*"): Promise<T[] | null> {
   if (!hasSupabaseConfig()) return null;
 
   try {
     const { supabase } = await import("@/lib/supabase");
     if (!supabase) return null;
-    const { data, error } = await supabase.from(table).select("*");
-    if (error || !data) return null;
+    const { data, error } = await supabase.from(table).select(columns);
+    if (error) throw new Error(`Could not load ${table} from Supabase: ${error.message}`);
+    if (!data) throw new Error(`Supabase returned no ${table} data.`);
     return data as T[];
-  } catch {
-    return null;
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(`Could not load ${table} from Supabase.`);
   }
 }
 
 export function getBrandList(): Brand[] {
-  const saved = readLocalCatalog<Brand[] | null>("vini-brands", null);
+  const saved = readCatalogMemory<Brand[] | null>("vini-brands", null);
   const source = saved === null ? brands : saved;
   return source.filter((brand) => brand.status !== "inactive");
 }
 
 export async function getBrandListFromStore(): Promise<Brand[]> {
   const remote = await fetchSupabaseCatalog<Brand>("brands");
-  if (remote && remote.length) return remote.map((brand) => ({ ...brand, createdAt: brand.createdAt ?? (brand as Brand & { created_at?: string }).created_at, updatedAt: brand.updatedAt ?? (brand as Brand & { updated_at?: string }).updated_at })).filter((brand) => brand.status !== "inactive");
+  if (remote !== null) {
+    const normalized = remote.map((brand) => ({ ...brand, createdAt: brand.createdAt ?? (brand as Brand & { created_at?: string }).created_at, updatedAt: brand.updatedAt ?? (brand as Brand & { updated_at?: string }).updated_at }));
+    updateCatalogMemory("vini-brands", normalized);
+    return normalized.filter((brand) => brand.status !== "inactive");
+  }
   return getBrandList();
 }
 
@@ -418,25 +359,36 @@ export function getBrandBySlug(slug: string): Brand | undefined {
 }
 
 export function getModelList(): ProductModel[] {
-  const saved = readLocalCatalog<ProductModel[] | null>("vini-models", null);
+  const saved = readCatalogMemory<ProductModel[] | null>("vini-models", null);
   const source = saved === null ? defaultModels : saved;
   return source.filter((model) => model.status !== "inactive");
 }
 
 export async function getModelListFromStore(): Promise<ProductModel[]> {
   const remote = await fetchSupabaseCatalog<ProductModel>("models");
-  if (remote && remote.length) return remote.map((model) => {
-    const row = model as ProductModel & { brand_id?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
+  if (remote !== null) {
+    const normalized = remote.map((model) => {
+    const row = model as ProductModel & { brand_id?: string; color_name?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
+    const storedColors = Array.isArray(model.colors) ? model.colors : [];
+    const primaryColor = storedColors.find((color) => color.isPrimary);
     return {
       ...model,
       brandId: model.brandId ?? row.brand_id,
-      colors: Array.isArray(model.colors) ? model.colors : [],
+      colorName: model.colorName ?? row.color_name ?? primaryColor?.name ?? "",
+      inventory: Number(row.inventory ?? 0),
+      colors: storedColors.filter((color) => !color.isPrimary).map((color) => ({
+        ...color,
+        price: color.price === undefined ? undefined : Number(color.price),
+      })),
       newArrival: model.newArrival ?? row.new_arrival ?? false,
       bestSeller: model.bestSeller ?? row.best_seller ?? false,
       createdAt: model.createdAt ?? row.created_at,
       updatedAt: model.updatedAt ?? row.updated_at,
     };
-  }).filter((model) => model.status !== "inactive");
+    });
+    updateCatalogMemory("vini-models", normalized);
+    return normalized.filter((model) => model.status !== "inactive");
+  }
   return getModelList();
 }
 
@@ -444,40 +396,79 @@ export function getModelBySlug(slug: string): ProductModel | undefined {
   return getModelList().find((model) => model.slug === slug);
 }
 
+export async function getModelSearchSuggestionsFromStore(): Promise<Array<Pick<ProductModel, "id" | "name" | "slug" | "brandId">>> {
+  type ModelSearchRow = Pick<ProductModel, "id" | "name" | "slug" | "status"> & { brand_id: string };
+  const remote = await fetchSupabaseCatalog<ModelSearchRow>("models", "id,name,slug,brand_id,status");
+  if (remote !== null) {
+    return remote
+      .filter((model) => model.status !== "inactive")
+      .map(({ id, name, slug, brand_id }) => ({ id, name, slug, brandId: brand_id }));
+  }
+  return getModelList().map(({ id, name, slug, brandId }) => ({ id, name, slug, brandId }));
+}
+
 export function getAccessoryList(): Accessory[] {
-  const saved = readLocalCatalog<Accessory[] | null>("vini-accessories", null);
-  const source = saved && saved.length ? saved : defaultAccessories;
+  const saved = readCatalogMemory<Accessory[] | null>("vini-accessories", null);
+  const source = saved === null ? defaultAccessories : saved;
   return source.filter((item) => item.status !== "inactive");
 }
 
 export async function getAccessoryListFromStore(): Promise<Accessory[]> {
   const remote = await fetchSupabaseCatalog<Accessory>("accessories");
-  if (remote && remote.length) return remote.map((item) => ({ ...item, shortDescription: item.shortDescription ?? (item as Accessory & { short_description?: string }).short_description ?? "", createdAt: item.createdAt ?? (item as Accessory & { created_at?: string }).created_at, updatedAt: item.updatedAt ?? (item as Accessory & { updated_at?: string }).updated_at })).filter((item) => item.status !== "inactive");
+  if (remote !== null) {
+    const normalized = remote.map((item) => {
+    const row = item as Accessory & { short_description?: string; created_at?: string; updated_at?: string };
+    return {
+      ...item,
+      shortDescription: item.shortDescription ?? row.short_description ?? "",
+      features: Array.isArray(item.features) ? item.features : [],
+      createdAt: item.createdAt ?? row.created_at,
+      updatedAt: item.updatedAt ?? row.updated_at,
+    };
+    });
+    updateCatalogMemory("vini-accessories", normalized);
+    return normalized.filter((item) => item.status !== "inactive");
+  }
   return getAccessoryList();
 }
 
-export function saveAccessoryList(nextAccessories: Accessory[]) {
-  writeLocalCatalog("vini-accessories", nextAccessories);
-  void writeSupabaseRows("accessories", nextAccessories.map((accessory) => ({
-    id: accessory.id,
-    name: accessory.name,
-    slug: accessory.slug,
-    category: accessory.category,
-    price: accessory.price,
-    stock: accessory.stock,
-    image: accessory.image,
-    shortDescription: accessory.shortDescription,
-    description: accessory.description,
-    features: accessory.features,
-    status: accessory.status,
-    featured: accessory.featured ?? false,
-    created_at: accessory.createdAt ?? new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  })));
+export async function saveAccessoryList(nextAccessories: Accessory[]) {
+  const error = await saveAccessoriesThroughAdminApi(nextAccessories);
+  if (!error) updateCatalogMemory("vini-accessories", nextAccessories);
+  return error;
+}
+
+async function saveAccessoriesThroughAdminApi(accessories: Accessory[]) {
+  try {
+    const { supabase } = await import("@/lib/supabase");
+    if (!supabase) return "Supabase is not configured.";
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !data.session) return "Your admin session expired. Sign in again and retry.";
+
+    const response = await fetch("/api/admin/accessories", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ accessories }),
+    });
+    const result = await response.json() as { error?: string };
+    if (!response.ok) return result.error || `Accessory save failed (HTTP ${response.status}).`;
+    return null;
+  } catch {
+    return "Could not reach the accessory save service. Check your connection and retry.";
+  }
+}
+
+export async function saveAccessoryToStore(accessory: Accessory, nextAccessories: Accessory[]) {
+  const error = await saveAccessoriesThroughAdminApi([accessory]);
+  if (!error) updateCatalogMemory("vini-accessories", nextAccessories);
+  return error;
 }
 
 export function upsertAccessory(input: Partial<Accessory> & Pick<Accessory, "name" | "price">): Accessory {
-  const accessories = getAccessoryList();
   const nextAccessory: Accessory = {
     id: input.id ?? `accessory-${slugify(input.name)}`,
     name: input.name,
@@ -495,23 +486,15 @@ export function upsertAccessory(input: Partial<Accessory> & Pick<Accessory, "nam
     updatedAt: new Date().toISOString(),
   };
 
-  const index = accessories.findIndex((item) => item.id === nextAccessory.id || item.slug === nextAccessory.slug);
-  const updated = [...accessories];
-  if (index >= 0) {
-    updated[index] = nextAccessory;
-  } else {
-    updated.push(nextAccessory);
-  }
-
-  saveAccessoryList(updated);
   return nextAccessory;
 }
 
-export function deleteAccessoryById(id: string) {
-  const next = getAccessoryList().filter((item) => item.id !== id);
-  saveAccessoryList(next);
-  void deleteSupabaseRows("accessories", [id]);
-  return next;
+export async function deleteAccessoryById(id: string, currentAccessories = getAccessoryList()) {
+  const error = await deleteSupabaseRows("accessories", [id]);
+  if (error) return { accessories: currentAccessories, error };
+  const next = currentAccessories.filter((item) => item.id !== id);
+  updateCatalogMemory("vini-accessories", next);
+  return { accessories: next, error: null };
 }
 
 export function getBrandModels(brandSlug: string): ProductModel[] {
@@ -521,8 +504,8 @@ export function getBrandModels(brandSlug: string): ProductModel[] {
 }
 
 export function getProductsFromStoreSync(): Product[] {
-  const saved = readLocalCatalog<Product[] | null>("vini-products", null);
-  return (saved && saved.length ? saved : products).map((product) => ({
+  const saved = readCatalogMemory<Product[] | null>("vini-products", null);
+  return (saved === null ? products : saved).map((product) => ({
     ...product,
     brandId: product.brandId ?? "brand-vini",
     model: product.model ?? product.name,
@@ -537,9 +520,8 @@ export function getProductsForBrand(brandSlug: string): Product[] {
   return getProductsFromStoreSync().filter((product) => product.category === "ro" && (product.brandId === targetBrand.id || product.brand === targetBrand.name || product.brand.toLowerCase() === targetBrand.name.toLowerCase()));
 }
 
-export function saveProductsToStore(nextProducts: Product[]) {
-  writeLocalCatalog("vini-products", nextProducts);
-  void writeSupabaseRows("products", nextProducts.map((product) => ({
+export async function saveProductsToStore(nextProducts: Product[]) {
+  const error = await writeSupabaseRows("products", nextProducts.map((product) => ({
     id: product.id,
     name: product.name,
     slug: product.slug,
@@ -572,11 +554,12 @@ export function saveProductsToStore(nextProducts: Product[]) {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })));
+  if (!error) updateCatalogMemory("vini-products", nextProducts);
+  return error;
 }
 
 export async function saveBrandList(nextBrands: Brand[]) {
-  writeLocalCatalog("vini-brands", nextBrands);
-  return writeSupabaseRows("brands", nextBrands.map((brand) => ({
+  const error = await writeSupabaseRows("brands", nextBrands.map((brand) => ({
     id: brand.id,
     name: brand.name,
     slug: brand.slug,
@@ -586,11 +569,12 @@ export async function saveBrandList(nextBrands: Brand[]) {
     created_at: brand.createdAt ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })));
+  if (!error) updateCatalogMemory("vini-brands", nextBrands);
+  return error;
 }
 
-export function saveModelList(nextModels: ProductModel[]) {
-  writeLocalCatalog("vini-models", nextModels);
-  void writeSupabaseRows("models", nextModels.map((model) => ({
+export async function saveModelList(nextModels: ProductModel[], syncInventoryModelIds: string[] = []) {
+  const error = await writeSupabaseRows("models", nextModels.map((model) => ({
     id: model.id,
     name: model.name,
     slug: model.slug,
@@ -598,8 +582,12 @@ export function saveModelList(nextModels: ProductModel[]) {
     description: model.description,
     image: model.image,
     gallery: model.gallery,
-    colors: model.colors ?? [],
+    colors: [
+      ...(model.colorName ? [{ name: model.colorName, image: model.image, price: model.price, isPrimary: true }] : []),
+      ...(model.colors ?? []).filter((color) => !color.isPrimary).map((color) => ({ ...color, isPrimary: false })),
+    ],
     price: model.price ?? null,
+    inventory: model.inventory ?? 0,
     new_arrival: model.newArrival ?? false,
     best_seller: model.bestSeller ?? false,
     featured: model.featured ?? false,
@@ -608,31 +596,68 @@ export function saveModelList(nextModels: ProductModel[]) {
     created_at: model.createdAt ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })));
+  if (error) return error;
+
+  if (syncInventoryModelIds.length) {
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      if (!supabase) return "Supabase is not configured.";
+
+      const { data: productsToMatch, error: productsError } = await supabase
+        .from("products")
+        .select("id,brand_id,model,model_id,model_slug");
+      if (productsError) return productsError.message;
+
+      for (const model of nextModels.filter((item) => syncInventoryModelIds.includes(item.id))) {
+        const productIds = (productsToMatch || []).filter((product) =>
+          product.model_id === model.id
+          || (product.model_slug || "").toLowerCase() === model.slug.toLowerCase()
+          || (product.brand_id === model.brandId && (product.model || "").toLowerCase() === model.name.toLowerCase()),
+        ).map((product) => product.id);
+        if (!productIds.length) continue;
+
+        const inventory = Math.max(0, Math.floor(Number(model.inventory) || 0));
+        const { error: productUpdateError } = await supabase.from("products").update({
+          inventory,
+          stock_status: inventory === 0 ? "out-of-stock" : inventory <= 10 ? "low-stock" : "in-stock",
+        }).in("id", productIds);
+        if (productUpdateError) return productUpdateError.message;
+      }
+    } catch (syncError) {
+      return syncError instanceof Error ? syncError.message : "Unable to sync model stock to inventory.";
+    }
+  }
+
+  updateCatalogMemory("vini-models", nextModels);
+  return null;
 }
 
-export function deleteBrandById(id: string, currentBrands = getBrandList()) {
+export async function deleteBrandById(id: string, currentBrands = getBrandList()) {
+  const error = await deleteSupabaseRows("brands", [id]);
+  if (error) return { brands: currentBrands, error };
   const next = currentBrands.filter((brand) => brand.id !== id);
-  saveBrandList(next);
-  void deleteSupabaseRows("brands", [id]);
-  return next;
+  updateCatalogMemory("vini-brands", next);
+  return { brands: next, error: null };
 }
 
-export function deleteModelById(id: string, currentModels = getModelList()) {
+export async function deleteModelById(id: string, currentModels = getModelList()) {
+  const error = await deleteSupabaseRows("models", [id]);
+  if (error) return { models: currentModels, error };
   const next = currentModels.filter((model) => model.id !== id);
-  saveModelList(next);
-  void deleteSupabaseRows("models", [id]);
-  return next;
+  updateCatalogMemory("vini-models", next);
+  return { models: next, error: null };
 }
 
-export function deleteProductBySlug(slug: string) {
-  const next = getProductsFromStoreSync().filter((product) => product.slug !== slug);
-  saveProductsToStore(next);
-  return next;
+export async function deleteProductById(id: string, currentProducts = getProductsFromStoreSync()) {
+  const error = await deleteSupabaseRows("products", [id]);
+  if (error) return { products: currentProducts, error };
+  const next = currentProducts.filter((product) => product.id !== id);
+  updateCatalogMemory("vini-products", next);
+  return { products: next, error: null };
 }
 
 export function upsertBrand(input: Partial<Brand> & Pick<Brand, "name">): Brand {
-  const brandsList = getBrandList();
-  const nextBrand: Brand = {
+  return {
     id: input.id ?? `brand-${slugify(input.name)}`,
     name: input.name,
     slug: input.slug ?? slugify(input.name),
@@ -642,31 +667,21 @@ export function upsertBrand(input: Partial<Brand> & Pick<Brand, "name">): Brand 
     createdAt: input.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-
-  const index = brandsList.findIndex((brand) => brand.id === nextBrand.id || brand.slug === nextBrand.slug);
-  const updated = [...brandsList];
-  if (index >= 0) {
-    updated[index] = nextBrand;
-  } else {
-    updated.push(nextBrand);
-  }
-
-  writeLocalCatalog("vini-brands", updated);
-  return nextBrand;
 }
 
 export function upsertModel(input: Partial<ProductModel> & Pick<ProductModel, "name" | "brandId">): ProductModel {
-  const models = getModelList();
-  const nextModel: ProductModel = {
+  return {
     id: input.id ?? `model-${slugify(input.name)}-${input.brandId}`,
     name: input.name,
     slug: input.slug ?? slugify(input.name),
     brandId: input.brandId,
     description: input.description ?? "",
+    colorName: input.colorName ?? "",
     image: input.image ?? "/RO1.jpeg",
     gallery: input.gallery && input.gallery.length ? input.gallery : [input.image ?? "/RO1.jpeg"],
     colors: input.colors ?? [],
     price: input.price,
+    inventory: input.inventory ?? 0,
     newArrival: input.newArrival ?? false,
     bestSeller: input.bestSeller ?? false,
     featured: input.featured ?? false,
@@ -675,21 +690,9 @@ export function upsertModel(input: Partial<ProductModel> & Pick<ProductModel, "n
     createdAt: input.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-
-  const index = models.findIndex((model) => model.id === nextModel.id || (model.slug === nextModel.slug && model.brandId === nextModel.brandId));
-  const updated = [...models];
-  if (index >= 0) {
-    updated[index] = nextModel;
-  } else {
-    updated.push(nextModel);
-  }
-
-  saveModelList(updated);
-  return nextModel;
 }
 
 export function upsertProduct(input: Partial<Product> & Pick<Product, "name" | "brand" | "brandId" | "price" | "category">): Product {
-  const allProducts = getProductsFromStoreSync();
   const modelName = input.model ?? input.name;
   const nextProduct: Product = {
     id: input.id ?? `prod-${slugify(input.name)}-${input.brandId}`,
@@ -723,43 +726,22 @@ export function upsertProduct(input: Partial<Product> & Pick<Product, "name" | "
     warranty: input.warranty,
   };
 
-  const index = allProducts.findIndex((product) => product.id === nextProduct.id || product.slug === nextProduct.slug);
-  const updated = [...allProducts];
-  if (index >= 0) {
-    updated[index] = nextProduct;
-  } else {
-    updated.push(nextProduct);
-  }
-
-  saveProductsToStore(updated);
   return nextProduct;
 }
 
 export async function getProductsFromStore(): Promise<Product[]> {
-  if (!hasSupabaseConfig()) {
-    return getProductsFromStoreSync();
-  }
-
-  try {
-    const { supabase } = await import("@/lib/supabase");
-    if (!supabase) {
-      return getProductsFromStoreSync();
-    }
-    const { data, error } = await supabase.from("products").select("*").limit(50);
-    if (error || !data) {
-      return getProductsFromStoreSync();
-    }
-
-    return data.map((row: Record<string, unknown>) => ({
+  const remote = await fetchSupabaseCatalog<Record<string, unknown>>("products");
+  if (remote === null) return getProductsFromStoreSync();
+  const normalized = remote.map((row) => ({
       id: String(row.id ?? row.slug ?? row.name ?? "product"),
       name: String(row.name ?? "Product"),
       slug: String(row.slug ?? String(row.name ?? "product").toLowerCase().replace(/\s+/g, "-")),
       category: String(row.category ?? "ro"),
       brand: String(row.brand ?? "VINI"),
-      brandId: row.brandId ? String(row.brandId) : undefined,
+      brandId: row.brand_id ? String(row.brand_id) : row.brandId ? String(row.brandId) : undefined,
       model: row.model ? String(row.model) : undefined,
-      modelId: row.modelId ? String(row.modelId) : undefined,
-      modelSlug: row.modelSlug ? String(row.modelSlug) : undefined,
+      modelId: row.model_id ? String(row.model_id) : row.modelId ? String(row.modelId) : undefined,
+      modelSlug: row.model_slug ? String(row.model_slug) : row.modelSlug ? String(row.modelSlug) : undefined,
       price: Number(row.price ?? 0),
       compareAtPrice: row.compare_at_price !== undefined ? Number(row.compare_at_price) : row.compareAtPrice !== undefined ? Number(row.compareAtPrice) : undefined,
       inventory: Number(row.inventory ?? 0),
@@ -781,9 +763,8 @@ export async function getProductsFromStore(): Promise<Product[]> {
       capacity: row.capacity ? String(row.capacity) : undefined,
       warranty: row.warranty ? String(row.warranty) : undefined,
     }));
-  } catch {
-    return getProductsFromStoreSync();
-  }
+  updateCatalogMemory("vini-products", normalized);
+  return normalized;
 }
 
 export async function getProductBySlugFromStore(slug: string): Promise<Product | undefined> {
@@ -801,9 +782,9 @@ export const serviceCatalog = [
 
 export function calculateOrderSummary(cart: Array<{ product: Product; quantity: number }>) {
   const subtotal = cart.reduce((total, line) => total + line.product.price * line.quantity, 0);
-  const gst = subtotal * 0.18;
+  const gst = subtotal - subtotal / 1.18;
   const shipping = subtotal > 0 && subtotal < 5000 ? 199 : 0;
-  const grandTotal = subtotal + gst + shipping;
+  const grandTotal = subtotal + shipping;
 
   return {
     subtotal,

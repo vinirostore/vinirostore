@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { saveCustomerProfile } from "@/lib/customer-data";
 import { ADMIN_EMAIL } from "@/lib/admin-config";
+import { saveCustomerProfile } from "@/lib/customer-data";
 
 export { ADMIN_EMAIL };
 
@@ -17,15 +17,6 @@ export type AccountUser = {
 
 export type PasswordRecoveryResult = { error?: string; question?: string; emailReset?: boolean };
 
-export type StoredAccount = AccountUser & {
-  password: string;
-  securityQuestion?: string;
-  securityAnswerHash?: string;
-  addresses?: Array<{ id: string; label: string; line1: string; city: string; state: string; pincode: string; phone: string; isDefault?: boolean; createdAt?: string; }>;
-  notifications?: Record<string, boolean>;
-  paymentPreferences?: { method: string; upiId?: string; cardLabel?: string; };
-};
-
 type AuthState = {
   isAuthenticated: boolean;
   isAuthReady: boolean;
@@ -35,6 +26,8 @@ type AuthState = {
   login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
   requestEmailOtp: (email: string) => Promise<{ error?: string }>;
   verifyEmailOtp: (email: string, token: string) => Promise<{ error?: string }>;
+  verifySignupOtp: (email: string, token: string) => Promise<{ error?: string }>;
+  resendSignupOtp: (email: string) => Promise<{ error?: string }>;
   registerAccount: (name: string, email: string, password: string, phone?: string, securityQuestion?: string, securityAnswer?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
   requestPasswordReset: (email: string) => Promise<PasswordRecoveryResult>;
   resetPasswordWithSecurityAnswer: (email: string, answer: string, newPassword: string) => Promise<{ error?: string }>;
@@ -45,9 +38,6 @@ type AuthState = {
 };
 
 const AuthStateContext = createContext<AuthState | null>(null);
-const AUTH_KEY = "vini-authenticated";
-const USER_KEY = "vini-user";
-const ACCOUNTS_KEY = "vini-accounts";
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -62,6 +52,15 @@ export function normalizeIndianPhone(phone?: string) {
   return phone.trim();
 }
 
+async function readAdminAccessResponse<T>(response: Response): Promise<T | null> {
+  if (!response.headers.get("content-type")?.includes("application/json")) return null;
+  try {
+    return await response.json() as T;
+  } catch {
+    return null;
+  }
+}
+
 export function isValidIndianPhone(phone?: string) {
   if (!phone) return false;
   const digits = phone.replace(/\D/g, "");
@@ -74,68 +73,6 @@ async function hashSecurityAnswer(answer: string) {
   const bytes = new TextEncoder().encode(normalizedAnswer);
   const digest = await window.crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export function readStoredAccounts(): StoredAccount[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(ACCOUNTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as StoredAccount[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    window.localStorage.removeItem(ACCOUNTS_KEY);
-    return [];
-  }
-}
-
-export function writeStoredAccounts(accounts: StoredAccount[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-}
-
-export function getStoredAccountByEmail(email: string): StoredAccount | undefined {
-  return readStoredAccounts().find((account) => account.email.toLowerCase() === normalizeEmail(email));
-}
-
-export function saveStoredAccount(account: StoredAccount) {
-  const accounts = readStoredAccounts();
-  const normalizedEmail = normalizeEmail(account.email);
-  const existingIndex = accounts.findIndex((item) => normalizeEmail(item.email) === normalizedEmail);
-
-  const nextAccounts = existingIndex >= 0
-    ? accounts.map((item) => normalizeEmail(item.email) === normalizedEmail ? { ...item, ...account } : item)
-    : [...accounts, account];
-
-  writeStoredAccounts(nextAccounts);
-  return nextAccounts.find((item) => normalizeEmail(item.email) === normalizedEmail);
-}
-
-export function readUserState(): AccountUser | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = window.localStorage.getItem(USER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as AccountUser;
-    if (!parsed?.email || !parsed?.name) return null;
-    return {
-      id: parsed.id,
-      name: parsed.name,
-      email: normalizeEmail(parsed.email),
-      phone: parsed.phone || undefined,
-      createdAt: parsed.createdAt || undefined,
-    };
-  } catch {
-    window.localStorage.removeItem(USER_KEY);
-    return null;
-  }
-}
-
-function readAuthState() {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(AUTH_KEY) === "true";
 }
 
 export function AuthStateProvider({ children }: { children: React.ReactNode }) {
@@ -156,6 +93,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         const { data } = await supabase.auth.getSession();
         const sessionUser = data.session?.user;
         if (!sessionUser) {
+          setUser(null);
+          setIsAuthenticated(false);
           setIsSupabaseAuthenticated(false);
           setIsAdminAuthenticated(false);
           return;
@@ -170,28 +109,18 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           createdAt: sessionUser.created_at,
         };
 
-        window.localStorage.setItem(AUTH_KEY, "true");
-        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-        await saveCustomerProfile({
-          id: nextUser.id!,
-          fullName: nextUser.name,
-          email: nextUser.email,
-          phone: nextUser.phone,
-          securityQuestion: metadata.securityQuestion ? String(metadata.securityQuestion) : undefined,
-          securityAnswerHash: metadata.securityAnswerHash ? String(metadata.securityAnswerHash) : undefined,
-        });
         setUser(nextUser);
         setIsAuthenticated(true);
         setIsSupabaseAuthenticated(true);
 
         if (normalizeEmail(sessionUser.email || "") === ADMIN_EMAIL) {
-         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+         const response = await fetch("/api/admin-access", {
   credentials: "include",
   headers: { Authorization: `Bearer ${data.session!.access_token}` },
   cache: "no-store",
 });
-          const result = await response.json() as { verified?: boolean };
-          setIsAdminAuthenticated(Boolean(result.verified));
+          const result = await readAdminAccessResponse<{ verified?: boolean }>(response);
+          setIsAdminAuthenticated(Boolean(response.ok && result?.verified));
         } else {
           setIsAdminAuthenticated(false);
         }
@@ -203,13 +132,6 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const syncAuthState = () => {
-      const currentUser = readUserState();
-      setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser) && readAuthState());
-    };
-
-    syncAuthState();
     void applySupabaseSession();
     const authSubscription = supabase
       ? supabase.auth.onAuthStateChange((event) => {
@@ -220,15 +142,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         }).data.subscription
       : null;
 
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === USER_KEY || event.key === AUTH_KEY) {
-        syncAuthState();
-      }
-    };
-
-    window.addEventListener("storage", handleStorage);
     return () => {
-      window.removeEventListener("storage", handleStorage);
       authSubscription?.unsubscribe();
     };
   }, []);
@@ -241,107 +155,39 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     user,
     login: async (email, name, phone, createdAt, password) => {
       const normalizedEmail = normalizeEmail(email);
+      if (!supabase) return { error: "Sign-in is unavailable because Supabase is not configured." };
 
-      if (supabase) {
-        try {
-          const signInResult = await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password: password || "",
-          });
-          let authUser = signInResult.data.user;
-          let authError = signInResult.error;
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: password || "",
+        });
+        if (error || !data.user) return { error: error?.message || "Unable to sign in with this account." };
 
-          if (authError) {
-            const legacyAccount = getStoredAccountByEmail(normalizedEmail);
-            if (legacyAccount && legacyAccount.password === password) {
-              const migration = await supabase.auth.signUp({
-                email: normalizedEmail,
-                password: password || "",
-                options: {
-                  data: {
-                    name: legacyAccount.name,
-                    phone: legacyAccount.phone || "",
-                    securityQuestion: legacyAccount.securityQuestion || "",
-                    securityAnswerHash: legacyAccount.securityAnswerHash || "",
-                  },
-                },
-              });
+        const metadata = data.user.user_metadata || {};
+        const nextUser: AccountUser = {
+          id: data.user.id,
+          name: String(metadata.name || name || "Customer"),
+          email: normalizeEmail(data.user.email || normalizedEmail),
+          phone: normalizeIndianPhone(String(metadata.phone || phone || "")) || undefined,
+          createdAt: data.user.created_at || createdAt || new Date().toISOString(),
+        };
+        const profileResult = await saveCustomerProfile({
+          id: nextUser.id!,
+          fullName: nextUser.name,
+          email: nextUser.email,
+          phone: nextUser.phone,
+        });
+        if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
 
-              if (!migration.error && migration.data.user && migration.data.session) {
-                authUser = migration.data.user;
-                authError = null;
-              }
-            }
-          }
-
-          if (authError || !authUser) {
-            return { error: authError?.message || "Unable to sign in with this account." };
-          }
-
-          const metadata = authUser.user_metadata || {};
-          const nextUser: AccountUser = {
-            id: authUser.id,
-            name: String(metadata.name || name || "Customer"),
-            email: normalizeEmail(authUser.email || normalizedEmail),
-            phone: normalizeIndianPhone(String(metadata.phone || phone || "")) || undefined,
-            createdAt: authUser.created_at || createdAt || new Date().toISOString(),
-          };
-
-          window.localStorage.setItem(AUTH_KEY, "true");
-          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-          await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
-          setUser(nextUser);
-          setIsAuthenticated(true);
-          setIsSupabaseAuthenticated(true);
-          setIsAdminAuthenticated(false);
-          return {};
-        } catch (error) {
-          const legacyAccount = getStoredAccountByEmail(normalizedEmail);
-          if (legacyAccount && legacyAccount.password === password) {
-            const nextUser: AccountUser = {
-              id: legacyAccount.id || `user-${Date.now()}`,
-              name: legacyAccount.name || name || "Customer",
-              email: normalizeEmail(legacyAccount.email),
-              phone: normalizeIndianPhone(legacyAccount.phone || phone) || undefined,
-              createdAt: legacyAccount.createdAt || createdAt || new Date().toISOString(),
-            };
-
-            window.localStorage.setItem(AUTH_KEY, "true");
-            window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-            setUser(nextUser);
-            setIsAuthenticated(true);
-            setIsSupabaseAuthenticated(false);
-            setIsAdminAuthenticated(false);
-            return {};
-          }
-
-          return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
-        }
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error && error.message ? error.message : "Failed to sign in. Please try again." };
       }
-
-      const storedAccounts = readStoredAccounts();
-      const matchedAccount = storedAccounts.find((account) => normalizeEmail(account.email) === normalizedEmail);
-
-      const nextUser: AccountUser = {
-        id: matchedAccount?.id || `user-${Date.now()}`,
-        name: (name || matchedAccount?.name || "Customer").trim() || "Customer",
-        email: normalizedEmail,
-        phone: normalizeIndianPhone(phone || matchedAccount?.phone) || undefined,
-        createdAt: createdAt || matchedAccount?.createdAt || new Date().toISOString(),
-      };
-
-      if (matchedAccount && !matchedAccount.phone && nextUser.phone) {
-        const updatedAccount = { ...matchedAccount, phone: nextUser.phone };
-        saveStoredAccount(updatedAccount);
-      }
-
-      window.localStorage.setItem(AUTH_KEY, "true");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-      setUser(nextUser);
-      setIsAuthenticated(true);
-      setIsSupabaseAuthenticated(false);
-      setIsAdminAuthenticated(false);
-      return {};
     },
     requestEmailOtp: async (email) => {
       if (!supabase) return { error: "Email OTP is not configured on this website." };
@@ -380,8 +226,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           createdAt: data.user.created_at,
         };
 
-        window.localStorage.setItem(AUTH_KEY, "true");
-        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+        const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+        if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
         setUser(nextUser);
         setIsAuthenticated(true);
         setIsSupabaseAuthenticated(true);
@@ -391,166 +237,114 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         return { error: error instanceof Error ? error.message : "Failed to fetch. Please try again." };
       }
     },
+    verifySignupOtp: async (email, token) => {
+      if (!supabase) return { error: "Email verification is not configured on this website." };
+
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: normalizeEmail(email),
+          token: token.trim(),
+          type: "signup",
+        });
+        if (error || !data.user) return { error: error?.message || "The verification code is invalid or expired." };
+
+        const metadata = data.user.user_metadata || {};
+        const nextUser: AccountUser = {
+          id: data.user.id,
+          name: String(metadata.name || "Customer"),
+          email: normalizeEmail(data.user.email || email),
+          phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+          createdAt: data.user.created_at,
+        };
+        const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+        if (profileResult.error) return { error: `Account verified, but your profile could not be saved to Supabase: ${profileResult.error}` };
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to verify the signup code." };
+      }
+    },
+    resendSignupOtp: async (email) => {
+      if (!supabase) return { error: "Email verification is not configured on this website." };
+
+      try {
+        const { error } = await supabase.auth.resend({
+          type: "signup",
+          email: normalizeEmail(email),
+        });
+        return error ? { error: error.message } : {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to resend the verification code." };
+      }
+    },
     registerAccount: async (name, email, password, phone, securityQuestion, securityAnswer) => {
+      if (!supabase) return { error: "Email verification is not configured on this website." };
+
       const normalizedEmail = normalizeEmail(email);
       const sanitizedName = name.trim() || "Customer";
       const normalizedPhone = normalizeIndianPhone(phone);
       const createdAt = new Date().toISOString();
       const securityAnswerHash = securityAnswer ? await hashSecurityAnswer(securityAnswer) : "";
 
-      if (supabase) {
-        try {
-          const { data, error } = await supabase.auth.signUp({
-            email: normalizedEmail,
-            password,
-            options: {
-              emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
-              data: {
-                name: sanitizedName,
-                phone: normalizedPhone,
-                securityQuestion: securityQuestion || "",
-                securityAnswerHash,
-              },
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              name: sanitizedName,
+              phone: normalizedPhone,
+              securityQuestion: securityQuestion || "",
+              securityAnswerHash,
             },
-          });
+          },
+        });
 
-          if (error) return { error: error.message };
-          if (!data.user) return { error: "The account could not be created. Please try again." };
-          if (!data.session) return { needsEmailConfirmation: true };
+        if (error) return { error: error.message };
+        if (!data.user) return { error: "The account could not be created. Please try again." };
+        if (!data.session) return { needsEmailConfirmation: true };
 
-          const nextUser: AccountUser = {
-            id: data.user.id,
-            name: sanitizedName,
-            email: normalizedEmail,
-            phone: normalizedPhone || undefined,
-            createdAt: data.user.created_at || createdAt,
-          };
-
-          window.localStorage.setItem(AUTH_KEY, "true");
-          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone, securityQuestion, securityAnswerHash });
-          if (profileResult.error) return { error: profileResult.error };
-          setUser(nextUser);
-          setIsAuthenticated(true);
-          setIsSupabaseAuthenticated(true);
-          setIsAdminAuthenticated(false);
-          return {};
-        } catch (error) {
-          const nextAccount: StoredAccount = {
-            id: `user-${Date.now()}`,
-            name: sanitizedName,
-            email: normalizedEmail,
-            phone: normalizedPhone,
-            password,
-            securityQuestion,
-            securityAnswerHash,
-            createdAt,
-            addresses: [],
-            notifications: { serviceUpdates: true, promos: true, orderStatus: true },
-            paymentPreferences: { method: "cashfree" },
-          };
-
-          saveStoredAccount(nextAccount);
-          const nextUser: AccountUser = {
-            id: nextAccount.id,
-            name: sanitizedName,
-            email: normalizedEmail,
-            phone: normalizedPhone || undefined,
-            createdAt,
-          };
-
-          window.localStorage.setItem(AUTH_KEY, "true");
-          window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-          setUser(nextUser);
-          setIsAuthenticated(true);
-          setIsSupabaseAuthenticated(false);
-          setIsAdminAuthenticated(false);
-          return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
-        }
-      }
-
-      const nextAccount: StoredAccount = {
-        id: `user-${Date.now()}`,
-        name: sanitizedName,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        password,
-        securityQuestion,
-        securityAnswerHash,
-        createdAt,
-        addresses: [],
-        notifications: { serviceUpdates: true, promos: true, orderStatus: true },
-        paymentPreferences: { method: "cashfree" },
-      };
-
-      const existingAccount = getStoredAccountByEmail(normalizedEmail);
-      if (existingAccount) {
-        const mergedAccount = {
-          ...existingAccount,
+        const nextUser: AccountUser = {
+          id: data.user.id,
           name: sanitizedName,
           email: normalizedEmail,
-          phone: normalizedPhone || existingAccount.phone,
-          password: password || existingAccount.password,
-          createdAt: existingAccount.createdAt || createdAt,
+          phone: normalizedPhone || undefined,
+          createdAt: data.user.created_at || createdAt,
         };
-        saveStoredAccount(mergedAccount);
-      } else {
-        saveStoredAccount(nextAccount);
+        const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+        if (profileResult.error) return { error: `Account created, but your profile could not be saved to Supabase: ${profileResult.error}` };
+        setUser(nextUser);
+        setIsAuthenticated(true);
+        setIsSupabaseAuthenticated(true);
+        setIsAdminAuthenticated(false);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error && error.message ? error.message : "Failed to fetch. Please try again." };
       }
-
-      const persistedAccount = getStoredAccountByEmail(normalizedEmail) || nextAccount;
-      const nextUser: AccountUser = {
-        id: persistedAccount.id,
-        name: sanitizedName,
-        email: normalizedEmail,
-        phone: normalizedPhone || persistedAccount.phone,
-        createdAt: persistedAccount.createdAt || createdAt,
-      };
-
-      window.localStorage.setItem(AUTH_KEY, "true");
-      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-      setUser(nextUser);
-      setIsAuthenticated(true);
-      setIsSupabaseAuthenticated(false);
-      setIsAdminAuthenticated(false);
-      return {};
     },
     requestPasswordReset: async (email) => {
       const normalizedEmail = normalizeEmail(email);
-      if (supabase) {
-        try {
-          const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-            redirectTo: typeof window !== "undefined" ? `${window.location.origin}/account` : undefined,
-          });
-          return error ? { error: error.message } : { emailReset: true };
-        } catch (error) {
-          return { error: error instanceof Error ? error.message : "Unable to send the password reset email." };
-        }
+      if (!supabase) return { error: "Password recovery is unavailable because Supabase is not configured." };
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: typeof window !== "undefined" ? `${window.location.origin}/account` : undefined,
+        });
+        return error ? { error: error.message } : { emailReset: true };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Unable to send the password reset email." };
       }
-
-      const account = getStoredAccountByEmail(normalizedEmail);
-      if (!account) return { error: "No account was found for this email." };
-      if (!account.securityQuestion || !account.securityAnswerHash) return { error: "This account has no security question. Contact support to recover it." };
-      return { question: account.securityQuestion };
     },
-    resetPasswordWithSecurityAnswer: async (email, answer, newPassword) => {
-      const account = getStoredAccountByEmail(email);
-      if (!account?.securityAnswerHash) return { error: "This account cannot use security-question recovery." };
-      const answerHash = await hashSecurityAnswer(answer);
-      if (answerHash !== account.securityAnswerHash) return { error: "That security answer is incorrect." };
-      saveStoredAccount({ ...account, password: newPassword });
-      return {};
+    resetPasswordWithSecurityAnswer: async () => {
+      return { error: "Use the password reset link sent to your email to change your password." };
     },
     changePassword: async (currentPassword, newPassword) => {
       if (!user?.email) return { error: "You must be logged in to change your password." };
-      if (supabase) {
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
-        return error ? { error: error.message } : {};
-      }
-      const account = getStoredAccountByEmail(user.email);
-      if (!account || account.password !== currentPassword) return { error: "Your current password is incorrect." };
-      saveStoredAccount({ ...account, password: newPassword });
-      return {};
+      if (!supabase) return { error: "Password changes are unavailable because Supabase is not configured." };
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      return error ? { error: error.message } : {};
     },
     signInAdmin: async (email, password) => {
       if (!supabase) return { error: "Admin sign-in is unavailable because Supabase is not configured." };
@@ -580,8 +374,6 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
           createdAt: data.user.created_at,
         };
-        window.localStorage.setItem(AUTH_KEY, "true");
-        window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
         setUser(nextUser);
         setIsAuthenticated(true);
         setIsAuthReady(true);
@@ -602,7 +394,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           return { error: "Sign in with the configured admin Supabase account first." };
         }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+    const response = await fetch("/api/admin-access", {
   method: "POST",
   credentials: "include",
   headers: {
@@ -611,7 +403,8 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
   },
   body: JSON.stringify({ phone, birthDate }),
 });
-        const result = await response.json() as { verified?: boolean; error?: string };
+        const result = await readAdminAccessResponse<{ verified?: boolean; error?: string }>(response);
+        if (!result) return { error: "The admin verification endpoint returned an invalid response. Check that this site is deployed with its API routes enabled." };
         if (!response.ok || !result.verified) return { error: result.error || "Admin verification failed." };
 
         setIsAdminAuthenticated(true);
@@ -622,13 +415,11 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
     },
     logout: () => {
       if (supabase) void supabase.auth.signOut();
-   void fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin-access`, {
+  void fetch("/api/admin-access", {
   method: "DELETE",
   credentials: "include",
   keepalive: true,
 });
-      window.localStorage.removeItem(AUTH_KEY);
-      window.localStorage.removeItem(USER_KEY);
       setUser(null);
       setIsAuthenticated(false);
       setIsSupabaseAuthenticated(false);

@@ -11,7 +11,7 @@ export default async function AccessoryDetailPage({ params }: { params: Promise<
   return (
     <>
       <SiteHeader />
-      <AccessoryDetail slug={slug} initialAccessory={accessory} />
+      <AccessoryDetail initialAccessory={accessory} />
       <SiteFooter />
     </>
   );

@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
+import { getAuthReturnPath } from "@/lib/auth-navigation";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, signInAdmin, requestEmailOtp, verifyEmailOtp, requestPasswordReset, resetPasswordWithSecurityAnswer } = useAuthState();
-  const [mode, setMode] = useState<"password" | "otp" | "recovery">("password");
+  const [mode, setMode] = useState<"password" | "otp" | "recovery">("otp");
   const [otpSent, setOtpSent] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -33,7 +34,9 @@ export default function LoginPage() {
     try {
 
       if (!email || (mode === "password" && !password) || (mode === "otp" && otpSent && !String(formData.get("otp") ?? "").trim())) {
-        setError("Enter your email and password to continue.");
+        setError(mode === "password"
+          ? "Enter your email and password to continue."
+          : otpSent ? "Enter your email and verification code to continue." : "Enter your email to continue.");
         return;
       }
 
@@ -65,13 +68,18 @@ export default function LoginPage() {
       }
 
       if (mode === "otp") {
+        if (normalizedEmail === ADMIN_EMAIL.toLowerCase()) {
+          setError("Admin accounts must use password login.");
+          return;
+        }
+
         if (otpSent) {
           const result = await verifyEmailOtp(email, String(formData.get("otp") ?? ""));
           if (result.error) {
             setError(result.error);
             return;
           }
-          router.push("/account");
+          router.push(getAuthReturnPath());
           return;
         }
 
@@ -101,7 +109,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/account");
+      router.push(getAuthReturnPath());
     } finally {
       setIsSubmitting(false);
     }
@@ -153,7 +161,7 @@ export default function LoginPage() {
             {mode === "password" ? <button type="button" disabled={isSubmitting} onClick={() => { setMode("recovery"); setError(""); setRecoveryQuestion(""); }} className="w-full text-sm font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-60">Forgot password?</button> : null}
             {error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : null}
           </form>
-          <p className="mt-5 text-sm text-slate-600">Need an account? <Link href="/register" className="font-medium text-sky-700">Create one</Link></p>
+          <p className="mt-5 text-sm text-slate-600">Need an account? <Link href="/register" onClick={(event) => { event.preventDefault(); router.push(`/register?returnTo=${encodeURIComponent(getAuthReturnPath())}`); }} className="font-medium text-sky-700">Create one</Link></p>
         </div>
       </main>
       <SiteFooter />

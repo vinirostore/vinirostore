@@ -20,17 +20,22 @@ export default function CartPage() {
 
         {cart.length === 0 ? <div className="rounded-[30px] border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">Your cart is empty.</div> : <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
-            {cart.map((line) => (
-              <div key={line.product.slug} className="cart-line flex min-w-0 items-center gap-3 rounded-[28px] border border-slate-200 bg-white p-3 sm:gap-4 sm:p-4">
-                <Link href={`/products/${line.product.slug}`} className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100"><img src={line.product.image} alt={line.product.name} className="h-full w-full object-cover" /></Link>
-                <div className="min-w-0 flex-1">
-                  <Link href={`/products/${line.product.slug}`} className="text-lg font-semibold text-slate-900">{line.product.name}</Link>
-                  <p className="mt-1 text-sm text-slate-600">₹{line.product.price.toLocaleString("en-IN")}</p>
-                  <div className="mt-2 flex items-center gap-2"><button type="button" onClick={() => updateCartQuantity(line.product.slug, line.quantity - 1)} className="h-7 w-7 rounded-full border border-slate-200">-</button><span className="text-sm">{line.quantity}</span><button type="button" onClick={() => updateCartQuantity(line.product.slug, line.quantity + 1)} className="h-7 w-7 rounded-full border border-slate-200">+</button><button type="button" onClick={() => removeFromCart(line.product.slug)} className="ml-2 text-sm text-rose-700">Remove product</button></div>
+            {cart.map((line) => {
+              const itemHref = line.product.id.startsWith("model:") && line.product.brandId && line.product.modelSlug
+                ? `/brands/${line.product.brandId}/${line.product.modelSlug}`
+                : `/products/${line.product.slug}`;
+              return (
+                <div key={line.product.slug} className="cart-line flex min-w-0 items-center gap-3 rounded-[28px] border border-slate-200 bg-white p-3 sm:gap-4 sm:p-4">
+                  <Link href={itemHref} className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100"><img src={line.product.image} alt={line.product.name} className="h-full w-full object-cover" /></Link>
+                  <div className="min-w-0 flex-1">
+                    <Link href={itemHref} className="text-lg font-semibold text-slate-900">{line.product.name}</Link>
+                    <p className="mt-1 text-sm text-slate-600">₹{line.product.price.toLocaleString("en-IN")}</p>
+                    <div className="mt-2 flex items-center gap-2"><button type="button" onClick={() => updateCartQuantity(line.product.slug, line.quantity - 1)} className="h-7 w-7 rounded-full border border-slate-200">-</button><span className="text-sm">{line.quantity}</span><button type="button" onClick={() => updateCartQuantity(line.product.slug, line.quantity + 1)} className="h-7 w-7 rounded-full border border-slate-200">+</button><button type="button" onClick={() => removeFromCart(line.product.slug)} className="ml-2 text-sm text-rose-700">Remove product</button></div>
+                  </div>
+                  <p className="cart-line-total shrink-0 text-right text-sm font-semibold text-slate-900 sm:text-lg">₹{(line.product.price * line.quantity).toLocaleString("en-IN")}</p>
                 </div>
-                <p className="cart-line-total shrink-0 text-right text-sm font-semibold text-slate-900 sm:text-lg">₹{(line.product.price * line.quantity).toLocaleString("en-IN")}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <aside className="rounded-[30px] border border-slate-200 bg-white p-6">

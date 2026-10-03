@@ -25,7 +25,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthReady, isAuthenticated, isSupabaseAuthenticated, isAdminAuthenticated, user, logout } = useAuthState();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showAlerts, setShowAlerts] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
@@ -116,20 +115,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <h2 className="text-xl font-semibold text-slate-900">Business Control Center</h2>
             </div>
             <div className="hidden items-center gap-3 md:flex">
-              <button type="button" onClick={() => setShowAlerts((current) => !current)} className="rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">Alerts</button>
               <button type="button" onClick={() => router.push("/admin")} className="rounded-full bg-slate-900 px-3 py-2 text-sm font-medium text-white">Admin profile</button>
               <button type="button" onClick={() => setShowLogoutConfirm(true)} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">Logout</button>
             </div>
           </div>
-          {showAlerts ? (
-            <div className="border-t border-slate-200 bg-white px-4 py-3 md:px-6">
-              <ul className="space-y-2 text-sm text-slate-700">
-                <li className="rounded-xl bg-amber-50 p-3 text-amber-800">3 low-stock products need review.</li>
-                <li className="rounded-xl bg-sky-50 p-3 text-sky-800">2 service requests pending confirmation.</li>
-                <li className="rounded-xl bg-emerald-50 p-3 text-emerald-800">AMC renewals are on track.</li>
-              </ul>
-            </div>
-          ) : null}
         </header>
         <div className="p-4 md:p-6">{children}</div>
       </main>

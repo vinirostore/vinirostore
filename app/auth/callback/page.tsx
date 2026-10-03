@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SiteHeader } from "@/components/site-header";
 import { supabase } from "@/lib/supabase";
 
 export default function AuthCallbackPage() {
@@ -20,9 +21,10 @@ export default function AuthCallbackPage() {
       const searchParams = new URLSearchParams(window.location.search);
       const errorDescription = searchParams.get("error_description");
       if (errorDescription) {
-        setMessage(decodeURIComponent(errorDescription.replace(/\+/g, " ")));
+        setMessage(errorDescription);
         return;
       }
+      const destination = searchParams.get("next") === "/service-portal" ? "/service-portal" : "/account";
 
       const code = searchParams.get("code");
       if (code) {
@@ -39,7 +41,7 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      if (active) router.replace("/account");
+      if (active) router.replace(destination);
     }
 
     void confirmSession();
@@ -49,11 +51,14 @@ export default function AuthCallbackPage() {
   }, [router]);
 
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 py-16 text-center">
-      <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">Email confirmation</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{message}</p>
-      </div>
-    </main>
+    <>
+      <SiteHeader />
+      <main className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 py-16 text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Email confirmation</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">{message}</p>
+        </div>
+      </main>
+    </>
   );
 }

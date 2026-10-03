@@ -1,16 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, ProductModel, deleteModelById, getBrandList, getModelList, saveModelList, upsertModel } from "@/lib/catalog";
+import { Brand, ProductModel, deleteModelById, getBrandListFromStore, getModelListFromStore, getProductsFromStore, saveModelList, slugifyModelName, upsertModel } from "@/lib/catalog";
 
 export default function AdminModelsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [models, setModels] = useState<ProductModel[]>([]);
-  const [form, setForm] = useState({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [] as Array<{ name: string; image: string }>, price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" as ProductModel["status"] });
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [form, setForm] = useState({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [] as Array<{ name: string; image: string; price: string }>, price: "", inventory: "0", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" as ProductModel["status"] });
 
   useEffect(() => {
-    setBrands(getBrandList());
-    setModels(getModelList());
+    void Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]).then(([nextBrands, nextModels, products]) => {
+      setBrands(nextBrands);
+      setModels(nextModels.map((model) => {
+        const linkedProduct = products.find((product) =>
+          product.modelId === model.id
+          || product.modelSlug === model.slug
+          || (product.brandId === model.brandId && product.model?.toLowerCase() === model.name.toLowerCase()),
+        );
+        return linkedProduct ? { ...model, inventory: linkedProduct.inventory } : model;
+      }));
+    });
   }, []);
 
   const sortedModels = useMemo(() => [...models].sort((a, b) => a.name.localeCompare(b.name)), [models]);
@@ -44,20 +55,24 @@ export default function AdminModelsPage() {
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.brandId) return;
+    if (!form.brandId || isSaving) return;
+    setIsSaving(true);
+    setSaveError("");
 
     const next = upsertModel({
       id: form.id || undefined,
       brandId: form.brandId,
       name: form.name,
-      slug: form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      slug: form.slug || slugifyModelName(form.name),
       description: form.description,
+      colorName: form.colorName.trim(),
       image: form.image || "/RO1.jpeg",
       gallery: form.gallery.length ? form.gallery : [form.image || "/RO1.jpeg"],
-      colors: form.colors.filter((color) => color.name.trim() && color.image),
+      colors: form.colors.filter((color) => color.name.trim() && color.image && color.price !== "").map((color) => ({ ...color, name: color.name.trim(), price: Number(color.price) })),
       price: form.price ? Number(form.price) : undefined,
+      inventory: Math.max(0, Math.floor(Number(form.inventory) || 0)),
       newArrival: form.newArrival,
       bestSeller: form.bestSeller,
       deal: form.deal,
@@ -65,10 +80,15 @@ export default function AdminModelsPage() {
       status: form.status,
     });
 
-    const updated = [...getModelList().filter((model) => model.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
+    const updated = [...models.filter((model) => model.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
+    const error = await saveModelList(updated, [next.id]);
+    setIsSaving(false);
+    if (error) {
+      setSaveError(`Could not save model to Supabase: ${error}`);
+      return;
+    }
     setModels(updated);
-    saveModelList(updated);
-    setForm({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" });
+    setForm({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", inventory: "0", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" });
   }
 
   function handleEdit(model: ProductModel) {
@@ -78,10 +98,12 @@ export default function AdminModelsPage() {
       name: model.name,
       slug: model.slug,
       description: model.description,
+      colorName: model.colorName ?? "",
       image: model.image,
       gallery: model.gallery?.length ? model.gallery : [model.image],
-      colors: model.colors ?? [],
+      colors: (model.colors ?? []).map((color) => ({ ...color, price: color.price === undefined ? "" : String(color.price) })),
       price: model.price === undefined ? "" : String(model.price),
+      inventory: String(model.inventory ?? 0),
       newArrival: Boolean(model.newArrival),
       bestSeller: Boolean(model.bestSeller),
       deal: Boolean(model.deal),
@@ -90,12 +112,19 @@ export default function AdminModelsPage() {
     });
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     const model = models.find((item) => item.id === id);
-    if (!model || !window.confirm(`Delete ${model.name}? This action cannot be undone.`)) return;
+    if (!model || isSaving || !window.confirm(`Delete ${model.name}? This action cannot be undone.`)) return;
 
-    const updated = deleteModelById(id, models);
-    setModels(updated);
+    setIsSaving(true);
+    setSaveError("");
+    const result = await deleteModelById(id, models);
+    setIsSaving(false);
+    if (result.error) {
+      setSaveError(`Could not delete model from Supabase: ${result.error}`);
+      return;
+    }
+    setModels(result.models);
   }
 
   return (
@@ -118,11 +147,15 @@ export default function AdminModelsPage() {
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Model name</label>
-              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="VINI Compact" required />
+              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value, slug: slugifyModelName(event.target.value) }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="VINI Compact" required />
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Slug</label>
-              <input value={form.slug} onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="vini-compact" />
+              <input value={form.slug} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="vini-compact" />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Main colour name</label>
+              <input value={form.colorName} onChange={(event) => setForm((current) => ({ ...current, colorName: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="White" required />
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Model image</label>
@@ -139,13 +172,18 @@ export default function AdminModelsPage() {
               <input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="49999" />
             </div>
             <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Available stock</label>
+              <input type="number" min="0" step="1" value={form.inventory} onChange={(event) => setForm((current) => ({ ...current, inventory: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="0" />
+            </div>
+            <div>
               <div className="flex items-center justify-between gap-3">
                 <label className="block text-sm font-medium text-slate-700">Colour options</label>
-                <button type="button" onClick={() => setForm((current) => ({ ...current, colors: [...current.colors, { name: "", image: "/RO1.jpeg" }] }))} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Add colour</button>
+                <button type="button" onClick={() => setForm((current) => ({ ...current, colors: [...current.colors, { name: "", image: "/RO1.jpeg", price: "" }] }))} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Add colour</button>
               </div>
               {form.colors.length ? <div className="mt-3 space-y-3">{form.colors.map((color, index) => <div key={`color-option-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex gap-2">
-                  <input value={color.name} onChange={(event) => setForm((current) => ({ ...current, colors: current.colors.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) }))} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Colour name, e.g. White" />
+                  <input value={color.name} onChange={(event) => setForm((current) => ({ ...current, colors: current.colors.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) }))} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Colour name, e.g. Black" required />
+                  <input type="number" min="0" step="0.01" value={color.price} onChange={(event) => setForm((current) => ({ ...current, colors: current.colors.map((item, itemIndex) => itemIndex === index ? { ...item, price: event.target.value } : item) }))} className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Price" aria-label={`Price for ${color.name || `colour ${index + 1}`}`} required />
                   <button type="button" onClick={() => setForm((current) => ({ ...current, colors: current.colors.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700">Remove</button>
                 </div>
                 <div className="mt-2 flex items-center gap-3">
@@ -166,9 +204,10 @@ export default function AdminModelsPage() {
               {([['newArrival', 'New arrival'], ['bestSeller', 'Best seller'], ['deal', 'Deal'], ['featured', 'Featured']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.checked }))} />{label}</label>)}
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Save model</button>
-              <button type="button" onClick={() => setForm({ id: "", brandId: "", name: "", slug: "", description: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
+              <button type="submit" disabled={isSaving} className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60">{isSaving ? "Saving..." : "Save model"}</button>
+              <button type="button" onClick={() => setForm({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", inventory: "0", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
             </div>
+            {saveError ? <p className="mt-4 text-sm text-rose-700" role="alert">{saveError}</p> : null}
           </div>
         </form>
 

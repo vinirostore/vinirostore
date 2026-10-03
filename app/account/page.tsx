@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { businessConfig } from "@/lib/site-config";
-import { ADMIN_EMAIL, getStoredAccountByEmail, useAuthState } from "@/components/auth-state";
-import { getCustomerAccount, type CustomerOrder, type CustomerServiceRequest } from "@/lib/customer-data";
+import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
+import { getCustomerAccount, type CustomerOrder, type CustomerProfile, type CustomerServiceRequest } from "@/lib/customer-data";
+import { ServiceRequestQr } from "@/components/service-request-qr";
 
 export default function AccountPage() {
   const router = useRouter();
   const { isAuthenticated, isAdminAuthenticated, logout, user, changePassword } = useAuthState();
-  const storedAccount = user ? getStoredAccountByEmail(user.email) : undefined;
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [serviceRequests, setServiceRequests] = useState<CustomerServiceRequest[]>([]);
   const [dataError, setDataError] = useState("");
@@ -33,11 +34,19 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    void getCustomerAccount(user.id).then((result) => {
+    const refreshAccount = () => void getCustomerAccount(user.id!).then((result) => {
+      setCustomerProfile(result.profile);
       setOrders(result.orders);
       setServiceRequests(result.serviceRequests);
       setDataError(result.error || "");
     });
+    refreshAccount();
+    const interval = window.setInterval(refreshAccount, 15000);
+    window.addEventListener("focus", refreshAccount);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshAccount);
+    };
   }, [user?.id]);
 
   if (!isAuthenticated || !user) return null;
@@ -45,13 +54,13 @@ export default function AccountPage() {
   if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return null;
 
   const profile = {
-    name: user.name || "Customer",
-    email: user.email || businessConfig.email,
-    phone: user.phone || storedAccount?.phone || businessConfig.phone,
-    memberSince: storedAccount?.createdAt ? new Date(storedAccount.createdAt).getFullYear() : new Date().getFullYear(),
-    addresses: storedAccount?.addresses ?? [],
-    notifications: storedAccount?.notifications ?? { serviceUpdates: true, promos: true, orderStatus: true },
-    paymentPreferences: storedAccount?.paymentPreferences ?? { method: "cashfree" },
+    name: customerProfile?.full_name || user.name || "Customer",
+    email: customerProfile?.email || user.email || businessConfig.email,
+    phone: customerProfile?.phone || user.phone || businessConfig.phone,
+    memberSince: customerProfile?.created_at ? new Date(customerProfile.created_at).getFullYear() : new Date().getFullYear(),
+    addresses: customerProfile?.addresses ?? [],
+    notifications: customerProfile?.notification_preferences ?? { serviceUpdates: true, promos: true, orderStatus: true },
+    paymentPreferences: customerProfile?.payment_preferences ?? { method: "cashfree" },
   };
 
   const initials = profile.name
@@ -143,8 +152,19 @@ export default function AccountPage() {
               {dataError ? <p className="mt-4 text-sm text-rose-700">{dataError}</p> : null}
               {!dataError && orders.length === 0 && serviceRequests.length === 0 ? <p className="mt-4 text-sm text-slate-600">No orders or service requests yet.</p> : null}
               <div className="mt-4 space-y-3">
-                {orders.slice(0, 5).map((order) => <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><p className="font-medium text-slate-900">Order {order.order_number}</p><span className="text-sm capitalize text-slate-600">{order.status}</span></div><p className="mt-2 text-sm text-slate-600">{order.order_items.length} item(s) · ₹{Number(order.total).toLocaleString("en-IN")}</p></div>)}
-                {serviceRequests.slice(0, 5).map((request) => <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><p className="font-medium text-slate-900">{request.subject}</p><span className="text-sm capitalize text-slate-600">{request.status.replace("_", " ")}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{request.message}</p></div>)}
+                {orders.slice(0, 5).map((order) => <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><p className="font-medium text-slate-900">Order {order.order_number}</p><span className="text-sm capitalize text-slate-600">{order.status}</span></div><p className="mt-2 text-sm text-slate-600">{order.order_items.length} item(s) · ₹{Number(order.total).toLocaleString("en-IN")}</p>{order.shiprocket_awb_code ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-sm"><span className="text-slate-600">{order.shiprocket_courier_name || "Shiprocket"} · AWB {order.shiprocket_awb_code}</span><Link href={`/track-order/${encodeURIComponent(order.id)}`} className="font-medium text-sky-700 underline">Track delivery</Link></div> : null}</div>)}
+                {serviceRequests.slice(0, 5).map((request) => {
+                  const statusLabel = request.status === "open"
+                    ? "Service booked"
+                    : request.status === "in_progress"
+                      ? "Service in progress"
+                      : request.status === "completed"
+                        ? "Service completed"
+                        : request.status === "cancelled"
+                          ? "Booking cancelled"
+                          : request.status.replace("_", " ");
+                  return <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><div><p className="font-medium text-slate-900">{request.subject}</p><p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{request.request_type === "amc" ? "AMC booking" : request.request_type === "service" ? "Service booking" : "Enquiry"}</p></div><span className="text-sm text-slate-600">{statusLabel}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{request.message}</p>{request.status === "completed" && request.completed_by_name ? <p className="mt-2 text-sm text-emerald-800">Completed by <span className="font-semibold">{request.completed_by_name}</span>{request.completed_at ? ` · ${new Date(request.completed_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}</p> : null}{request.qr_value && request.request_type !== "enquiry" ? <div className="mt-4 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row"><ServiceRequestQr value={request.qr_value} /><div><p className="break-all font-mono text-xs text-slate-700">VINI-SVC-{request.id.toUpperCase()}</p>{request.status === "completed" ? <><p className="mt-2 font-semibold text-emerald-700">Service completed</p>{request.completed_by_name ? <p className="mt-1 text-sm text-slate-600">Technician: {request.completed_by_name}</p> : null}</> : request.status === "cancelled" ? <p className="mt-2 font-semibold text-slate-600">Booking cancelled</p> : <p className="mt-2 font-extrabold text-rose-700">DO NOT SCAN BEFORE THE SERVICE IS DONE.</p>}</div></div> : null}</div>;
+                })}
               </div>
             </div>
           </section>
@@ -178,7 +198,7 @@ export default function AccountPage() {
               <p className="mt-3 text-3xl font-semibold">{profile.memberSince}</p>
               <p className="mt-4 text-sm text-slate-200">Need help with your RO system? Book a service or contact the VINI support team.</p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Link href="/contact" className="rounded-full bg-white px-4 py-2.5 text-sm font-medium text-slate-900">Book service</Link>
+                <Link href="/services" className="rounded-full bg-white px-4 py-2.5 text-sm font-medium text-slate-900">Book service</Link>
                 <button type="button" onClick={handleLogout} className="rounded-full border border-white/20 px-4 py-2.5 text-sm font-medium text-white">Logout</button>
               </div>
             </div>

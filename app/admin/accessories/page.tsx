@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Accessory, getAccessoryList, saveAccessoryList, upsertAccessory } from "@/lib/catalog";
+import { Accessory, accessoryCategoryGroups, deleteAccessoryById, getAccessoryList, getAccessoryListFromStore, saveAccessoryList, saveAccessoryToStore, upsertAccessory } from "@/lib/catalog";
 
 export default function AdminAccessoriesPage() {
   const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [saveError, setSaveError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
     id: "",
     name: "",
@@ -21,7 +24,38 @@ export default function AdminAccessoriesPage() {
   });
 
   useEffect(() => {
-    setAccessories(getAccessoryList());
+    let active = true;
+    async function loadAccessories() {
+      try {
+        const [remoteAccessories, localAccessories] = await Promise.all([
+          getAccessoryListFromStore(),
+          Promise.resolve(getAccessoryList()),
+        ]);
+        if (!active) return;
+
+        if (remoteAccessories.length === 0 && localAccessories.length > 0) {
+          setAccessories(localAccessories);
+          setIsSaving(true);
+          const error = await saveAccessoryList(localAccessories);
+          if (!active) return;
+          setIsSaving(false);
+          if (error) {
+            setSaveError(`Existing browser-saved accessories could not be copied to Supabase: ${error}`);
+            return;
+          }
+          setSaveMessage(`Copied ${localAccessories.length} existing accessory item(s) to Supabase.`);
+          return;
+        }
+
+        setAccessories(remoteAccessories);
+      } catch {
+        if (active) setSaveError("Could not load accessories from Supabase.");
+      }
+    }
+    void loadAccessories();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const sortedAccessories = useMemo(() => [...accessories].sort((a, b) => a.name.localeCompare(b.name)), [accessories]);
@@ -38,8 +72,12 @@ export default function AdminAccessoriesPage() {
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError("");
+    setSaveMessage("");
 
     const next = upsertAccessory({
       id: form.id || undefined,
@@ -57,11 +95,17 @@ export default function AdminAccessoriesPage() {
         .filter(Boolean),
       status: form.status,
       featured: form.featured,
+      createdAt: accessories.find((item) => item.id === form.id)?.createdAt,
     });
 
-    const updated = [...getAccessoryList().filter((item) => item.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
+    const updated = [...accessories.filter((item) => item.id !== next.id && item.slug !== next.slug), next].sort((a, b) => a.name.localeCompare(b.name));
+    const error = await saveAccessoryToStore(next, updated);
+    setIsSaving(false);
+    if (error) {
+      setSaveError(`Could not save accessory to Supabase: ${error}`);
+      return;
+    }
     setAccessories(updated);
-    saveAccessoryList(updated);
     setForm({
       id: "",
       name: "",
@@ -95,10 +139,20 @@ export default function AdminAccessoriesPage() {
     });
   }
 
-  function handleDelete(id: string) {
-    const updated = getAccessoryList().filter((item) => item.id !== id);
-    saveAccessoryList(updated);
-    setAccessories(updated);
+  async function handleDelete(id: string) {
+    const item = accessories.find((accessory) => accessory.id === id);
+    if (!item || isSaving || !window.confirm(`Delete ${item.name}? This action cannot be undone.`)) return;
+
+    setIsSaving(true);
+    setSaveError("");
+    setSaveMessage("");
+    const result = await deleteAccessoryById(id, accessories);
+    setIsSaving(false);
+    if (result.error) {
+      setSaveError(`Could not delete accessory from Supabase: ${result.error}`);
+      return;
+    }
+    setAccessories(result.accessories);
   }
 
   return (
@@ -126,11 +180,9 @@ export default function AdminAccessoriesPage() {
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">Category</label>
                 <select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0">
-                  <option value="general">General</option>
-                  <option value="filters">Filters</option>
-                  <option value="membranes">Membranes</option>
-                  <option value="fittings">Fittings</option>
-                  <option value="service">Service</option>
+                  {accessoryCategoryGroups.map((group) => <optgroup key={group.label} label={group.label}>
+                    {group.categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                  </optgroup>)}
                 </select>
               </div>
 
@@ -183,9 +235,11 @@ export default function AdminAccessoriesPage() {
             </label>
 
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Save accessory</button>
-              <button type="button" onClick={() => setForm({ id: "", name: "", slug: "", category: "general", price: "", stock: "", image: "/RO1.jpeg", shortDescription: "", description: "", features: "", status: "active", featured: false })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
+              <button type="submit" disabled={isSaving} className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60">{isSaving ? "Saving..." : "Save accessory"}</button>
+              <button type="button" disabled={isSaving} onClick={() => setForm({ id: "", name: "", slug: "", category: "general", price: "", stock: "", image: "/RO1.jpeg", shortDescription: "", description: "", features: "", status: "active", featured: false })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 disabled:opacity-50">Reset</button>
             </div>
+            {saveMessage ? <p className="text-sm text-emerald-700" role="status">{saveMessage}</p> : null}
+            {saveError ? <p className="text-sm text-rose-700" role="alert">{saveError}</p> : null}
           </div>
         </form>
 
@@ -208,8 +262,8 @@ export default function AdminAccessoriesPage() {
                   <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${item.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
                     {item.status}
                   </span>
-                  <button type="button" onClick={() => handleEdit(item)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Edit</button>
-                  <button type="button" onClick={() => handleDelete(item.id)} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700">Delete</button>
+                  <button type="button" disabled={isSaving} onClick={() => handleEdit(item)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50">Edit</button>
+                  <button type="button" disabled={isSaving} onClick={() => void handleDelete(item.id)} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 disabled:opacity-50">Delete</button>
                 </div>
               </div>
             )) : <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">No accessories added yet.</p>}

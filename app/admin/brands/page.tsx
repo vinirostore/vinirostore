@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, deleteBrandById, getBrandList, saveBrandList, upsertBrand } from "@/lib/catalog";
+import { Brand, deleteBrandById, getBrandListFromStore, saveBrandList, upsertBrand } from "@/lib/catalog";
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -10,7 +10,7 @@ export default function AdminBrandsPage() {
   const [form, setForm] = useState({ id: "", name: "", slug: "", logo: "/RO1.jpeg", description: "", status: "active" as Brand["status"] });
 
   useEffect(() => {
-    setBrands(getBrandList());
+    void getBrandListFromStore().then(setBrands);
   }, []);
 
   const sortedBrands = useMemo(() => [...brands].sort((a, b) => a.name.localeCompare(b.name)), [brands]);
@@ -51,14 +51,14 @@ export default function AdminBrandsPage() {
       status: form.status,
     });
 
-    const updated = [...getBrandList().filter((brand) => brand.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
-    setBrands(updated);
+    const updated = [...brands.filter((brand) => brand.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
     const error = await saveBrandList(updated);
     setIsSaving(false);
     if (error) {
-      setSaveError(`Brand is only saved in this browser. Supabase: ${error}`);
+      setSaveError(`Could not save brand to Supabase: ${error}`);
       return;
     }
+    setBrands(updated);
     setForm({ id: "", name: "", slug: "", logo: "/RO1.jpeg", description: "", status: "active" });
   }
 
@@ -73,12 +73,19 @@ export default function AdminBrandsPage() {
     });
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     const brand = brands.find((item) => item.id === id);
-    if (!brand || !window.confirm(`Delete ${brand.name}? This action cannot be undone.`)) return;
+    if (!brand || isSaving || !window.confirm(`Delete ${brand.name}? This action cannot be undone.`)) return;
 
-    const updated = deleteBrandById(id, brands);
-    setBrands(updated);
+    setIsSaving(true);
+    setSaveError("");
+    const result = await deleteBrandById(id, brands);
+    setIsSaving(false);
+    if (result.error) {
+      setSaveError(`Could not delete brand from Supabase: ${result.error}`);
+      return;
+    }
+    setBrands(result.brands);
   }
 
   return (

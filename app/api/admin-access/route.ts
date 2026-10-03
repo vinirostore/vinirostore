@@ -13,10 +13,11 @@ import {
 export const runtime = "nodejs";
 
 function cookieOptions(maxAge: number) {
+  const isProduction = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict" as const,
+    secure: isProduction,
+    sameSite: isProduction ? ("none" as const) : ("lax" as const),
     path: "/",
     maxAge,
   };
