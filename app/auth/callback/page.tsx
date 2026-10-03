@@ -21,9 +21,10 @@ export default function AuthCallbackPage() {
       const searchParams = new URLSearchParams(window.location.search);
       const errorDescription = searchParams.get("error_description");
       if (errorDescription) {
-        setMessage(decodeURIComponent(errorDescription.replace(/\+/g, " ")));
+        setMessage(errorDescription);
         return;
       }
+      const destination = searchParams.get("next") === "/service-portal" ? "/service-portal" : "/account";
 
       const code = searchParams.get("code");
       if (code) {
@@ -40,7 +41,7 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      if (active) router.replace("/account");
+      if (active) router.replace(destination);
     }
 
     void confirmSession();

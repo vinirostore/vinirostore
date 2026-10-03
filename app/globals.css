@@ -206,6 +206,10 @@ main:not(.luxury-shell) .bg-slate-900 {
   box-shadow: 0 14px 28px rgba(8, 34, 52, 0.18);
 }
 
+.service-primary-button {
+  color: #fff !important;
+}
+
 main:not(.luxury-shell) .bg-slate-900:hover {
   background: linear-gradient(135deg, #0b1f2d, #347da5);
 }

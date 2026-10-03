@@ -25,11 +25,9 @@ export default function HomePage() {
 
     const handleCatalogChange = () => { void syncProducts(); };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);
-    window.addEventListener("storage", handleCatalogChange);
 
     return () => {
       window.removeEventListener("vini-catalog-updated", handleCatalogChange);
-      window.removeEventListener("storage", handleCatalogChange);
     };
   }, []);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { load } from "@cashfreepayments/cashfree-js";
 import { SiteFooter } from "@/components/site-footer";
@@ -12,16 +12,20 @@ import { supabase } from "@/lib/supabase";
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { user } = useAuthState();
+  const { isAuthReady, user } = useAuthState();
   const { cart } = useShopState();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const summary = calculateOrderSummary(cart);
 
+  useEffect(() => {
+    if (isAuthReady && !user) router.replace("/login?returnTo=%2Fcheckout");
+  }, [isAuthReady, router, user]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user?.id) {
-      router.push("/login");
+      router.push("/login?returnTo=%2Fcheckout");
       return;
     }
     if (!cart.length) {
@@ -71,6 +75,10 @@ export default function CheckoutPage() {
       setIsSubmitting(false);
     }
   }
+  if (!isAuthReady || !user) {
+    return <><SiteHeader /><main className="mx-auto max-w-6xl px-4 py-16 text-center text-sm text-slate-600">Sign in to continue to checkout...</main><SiteFooter /></>;
+  }
+
   return (
     <>
       <SiteHeader />

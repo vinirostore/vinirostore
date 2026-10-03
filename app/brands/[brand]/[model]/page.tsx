@@ -32,10 +32,11 @@ function ModelColorSelector({ colors, selectedIndex, onSelect, basePrice }: { co
 function ModelPurchaseActions({ product }: { product: Product }) {
   const { addToCart, isWishlisted, toggleWishlist } = useShopState();
   const wishlisted = isWishlisted(product.slug);
+  const isOutOfStock = product.inventory <= 0 || product.stockStatus === "out-of-stock";
 
   return (
     <div className="flex flex-wrap gap-3">
-      <button type="button" onClick={() => addToCart(product)} className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Add to cart</button>
+      <button type="button" disabled={isOutOfStock} onClick={() => addToCart(product)} className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{isOutOfStock ? "Out of stock" : "Add to cart"}</button>
       <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700" aria-label={`${wishlisted ? "Remove" : "Add"} ${product.name} ${wishlisted ? "from" : "to"} wishlist`}>
         {wishlisted ? "♥ Wishlisted" : "♡ Add to wishlist"}
       </button>
@@ -81,11 +82,9 @@ export default function BrandModelDetailPage() {
     void syncCatalog();
     const handleCatalogChange = () => { void syncCatalog(); };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);
-    window.addEventListener("storage", handleCatalogChange);
 
     return () => {
       window.removeEventListener("vini-catalog-updated", handleCatalogChange);
-      window.removeEventListener("storage", handleCatalogChange);
     };
   }, [brandSlug, modelSlug]);
 
@@ -144,13 +143,13 @@ export default function BrandModelDetailPage() {
     modelId: model.id,
     modelSlug: model.slug,
     price: model.price ?? 0,
-    inventory: 1,
+    inventory: model.inventory ?? 0,
     image: model.image,
     gallery: model.gallery?.length ? model.gallery : [model.image],
     description: model.description,
     shortDescription: model.description,
     sku: `MODEL-${model.id}`,
-    stockStatus: "in-stock",
+    stockStatus: (model.inventory ?? 0) === 0 ? "out-of-stock" : (model.inventory ?? 0) <= 10 ? "low-stock" : "in-stock",
     status: model.status,
   };
   const selectedColorSlug = selectedColor && !selectedColor.isPrimary ? selectedColor.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "";

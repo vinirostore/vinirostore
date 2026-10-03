@@ -36,11 +36,9 @@ export default function BrandDetailPage() {
     void syncBrand();
     const handleCatalogChange = () => { void syncBrand(); };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);
-    window.addEventListener("storage", handleCatalogChange);
 
     return () => {
       window.removeEventListener("vini-catalog-updated", handleCatalogChange);
-      window.removeEventListener("storage", handleCatalogChange);
     };
   }, [brandSlug]);
 
@@ -83,14 +81,7 @@ export default function BrandDetailPage() {
         </div>
 
         <div className="mb-8 rounded-[28px] border border-slate-200 bg-white p-6">
-          <div className="flex items-center gap-5">
-            <div className="h-20 w-20 overflow-hidden rounded-2xl bg-slate-100">
-              <img src={brand.logo} alt={brand.name} className="h-full w-full object-cover" />
-            </div>
-            <div>
-              <p className="text-sm leading-7 text-slate-600">{brand.description}</p>
-            </div>
-          </div>
+          <p className="text-sm leading-7 text-slate-600">{brand.description}</p>
         </div>
 
         <div className="space-y-6">
