@@ -33,8 +33,10 @@ export function ServiceQrScanner({ mode = "admin" }: { mode?: "admin" | "technic
       if (!response.ok) throw new Error(payload.error || "Could not complete this booking.");
       setResult({
         message: payload.alreadyCompleted
-          ? `This booking was already completed${payload.request?.completed_by_name ? ` by ${payload.request.completed_by_name}` : ""}.`
-          : `${payload.request?.subject || "Service"} marked completed${payload.request?.completed_by_name ? ` by ${payload.request.completed_by_name}` : ""}.`,
+          ? `This service QR was already scanned. The service was completed${payload.request?.completed_by_name ? ` by ${payload.request.completed_by_name}` : ""}.`
+          : mode === "technician"
+            ? `QR code scanned successfully. ${payload.request?.subject || "Service"} is done by ${payload.request?.completed_by_name || "the approved technician"}.`
+            : `${payload.request?.subject || "Service"} marked completed${payload.request?.completed_by_name ? ` by ${payload.request.completed_by_name}` : ""}.`,
         success: true,
       });
     } catch (scanError) {

@@ -148,12 +148,20 @@ export default function AccountPage() {
             </div>
 
             <div className="mt-8 border-t border-slate-200 pt-8">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Recent activity</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Recent orders</h3>
               {dataError ? <p className="mt-4 text-sm text-rose-700">{dataError}</p> : null}
               {!dataError && orders.length === 0 && serviceRequests.length === 0 ? <p className="mt-4 text-sm text-slate-600">No orders or service requests yet.</p> : null}
               <div className="mt-4 space-y-3">
                 {orders.slice(0, 5).map((order) => <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><p className="font-medium text-slate-900">Order {order.order_number}</p><span className="text-sm capitalize text-slate-600">{order.status}</span></div><p className="mt-2 text-sm text-slate-600">{order.order_items.length} item(s) · ₹{Number(order.total).toLocaleString("en-IN")}</p>{order.shiprocket_awb_code ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-sm"><span className="text-slate-600">{order.shiprocket_courier_name || "Shiprocket"} · AWB {order.shiprocket_awb_code}</span><Link href={`/track-order/${encodeURIComponent(order.id)}`} className="font-medium text-sky-700 underline">Track delivery</Link></div> : null}</div>)}
-                {serviceRequests.slice(0, 5).map((request) => {
+              </div>
+            </div>
+
+            <div className="mt-8 border-t border-slate-200 pt-8">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Service history</h3>
+              <p className="mt-2 text-sm text-slate-600">Your service and AMC bookings, including completed visits, are saved here.</p>
+              {!dataError && serviceRequests.length === 0 ? <p className="mt-4 text-sm text-slate-600">No service history yet.</p> : null}
+              <div className="mt-4 space-y-3">
+                {serviceRequests.map((request) => {
                   const statusLabel = request.status === "open"
                     ? "Service booked"
                     : request.status === "in_progress"
@@ -163,7 +171,7 @@ export default function AccountPage() {
                         : request.status === "cancelled"
                           ? "Booking cancelled"
                           : request.status.replace("_", " ");
-                  return <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><div><p className="font-medium text-slate-900">{request.subject}</p><p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{request.request_type === "amc" ? "AMC booking" : request.request_type === "service" ? "Service booking" : "Enquiry"}</p></div><span className="text-sm text-slate-600">{statusLabel}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{request.message}</p>{request.status === "completed" && request.completed_by_name ? <p className="mt-2 text-sm text-emerald-800">Completed by <span className="font-semibold">{request.completed_by_name}</span>{request.completed_at ? ` · ${new Date(request.completed_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}</p> : null}{request.qr_value && request.request_type !== "enquiry" ? <div className="mt-4 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row"><ServiceRequestQr value={request.qr_value} /><div><p className="break-all font-mono text-xs text-slate-700">VINI-SVC-{request.id.toUpperCase()}</p>{request.status === "completed" ? <><p className="mt-2 font-semibold text-emerald-700">Service completed</p>{request.completed_by_name ? <p className="mt-1 text-sm text-slate-600">Technician: {request.completed_by_name}</p> : null}</> : request.status === "cancelled" ? <p className="mt-2 font-semibold text-slate-600">Booking cancelled</p> : <p className="mt-2 font-extrabold text-rose-700">DO NOT SCAN BEFORE THE SERVICE IS DONE.</p>}</div></div> : null}</div>;
+                  return <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><div><p className="font-medium text-slate-900">{request.subject}</p><p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{request.request_type === "amc" ? "AMC booking" : request.request_type === "service" ? "Service booking" : "Enquiry"}</p></div><span className="text-sm text-slate-600">{statusLabel}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{request.message}</p><p className="mt-2 text-xs text-slate-500">Booked {new Date(request.created_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}</p>{request.status === "completed" ? <p className="mt-2 text-sm text-emerald-800">Service done{request.completed_by_name ? <> by <span className="font-semibold">{request.completed_by_name}</span></> : null}{request.completed_at ? ` · ${new Date(request.completed_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}</p> : null}{request.qr_value && request.request_type !== "enquiry" ? <div className="mt-4 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row"><ServiceRequestQr value={request.qr_value} /><div><p className="break-all font-mono text-xs text-slate-700">VINI-SVC-{request.id.toUpperCase()}</p>{request.status === "completed" ? <><p className="mt-2 font-semibold text-emerald-700">Service completed</p>{request.completed_by_name ? <p className="mt-1 text-sm text-slate-600">Technician: {request.completed_by_name}</p> : null}</> : request.status === "cancelled" ? <p className="mt-2 font-semibold text-slate-600">Booking cancelled</p> : <p className="mt-2 font-extrabold text-rose-700">DO NOT SCAN BEFORE THE SERVICE IS DONE.</p>}</div></div> : null}</div>;
                 })}
               </div>
             </div>
