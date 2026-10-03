@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Accessory, accessoryCategoryGroups, deleteAccessoryById, getAccessoryList, getAccessoryListFromStore, saveAccessoryList, upsertAccessory } from "@/lib/catalog";
+import { Accessory, accessoryCategoryGroups, deleteAccessoryById, getAccessoryList, getAccessoryListFromStore, saveAccessoryList, saveAccessoryToStore, upsertAccessory } from "@/lib/catalog";
 
 export default function AdminAccessoriesPage() {
   const [accessories, setAccessories] = useState<Accessory[]>([]);
@@ -99,7 +99,7 @@ export default function AdminAccessoriesPage() {
     });
 
     const updated = [...accessories.filter((item) => item.id !== next.id && item.slug !== next.slug), next].sort((a, b) => a.name.localeCompare(b.name));
-    const error = await saveAccessoryList(updated);
+    const error = await saveAccessoryToStore(next, updated);
     setIsSaving(false);
     if (error) {
       setSaveError(`Could not save accessory to Supabase: ${error}`);

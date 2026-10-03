@@ -44,6 +44,7 @@ export function SiteFooter() {
             <ul>
               <li><a href={`tel:${businessConfig.phone.replace(/\s+/g, "")}`}>{businessConfig.phone}</a></li>
               <li><a href={`mailto:${businessConfig.email}`}>{businessConfig.email}</a></li>
+              <li><Link href="/service-portal">Technician portal</Link></li>
               <li><Link href="/help">Help</Link></li>
             </ul>
           </nav>

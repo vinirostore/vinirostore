@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Product } from "@/lib/catalog";
 import { useAuthState } from "@/components/auth-state";
+import { supabase } from "@/lib/supabase";
+import type { Product } from "@/lib/catalog";
 
 type CartLine = {
   product: Product;
@@ -20,19 +21,33 @@ type ShopState = {
   updateCartQuantity: (slug: string, quantity: number) => void;
   toggleWishlist: (slug: string, product?: Product) => void;
   isWishlisted: (slug: string) => boolean;
+  persistenceError: string;
 };
 
 const ShopStateContext = createContext<ShopState | null>(null);
-const CART_KEY = "vini-cart";
-const WISHLIST_KEY = "vini-wishlist";
 type ShopNotice = {
   title: string;
   detail: string;
   tone: "cart" | "wishlist";
 };
 
-function getScopedStorageKey(prefix: string, email?: string | null) {
-  return email ? `${prefix}:${email.trim().toLowerCase()}` : prefix;
+type PersistedShopState = { cart?: CartLine[]; wishlist?: Product[] };
+
+function mergeCart(...groups: CartLine[][]) {
+  const merged = new Map<string, CartLine>();
+  for (const line of groups.flat()) {
+    if (!line?.product?.slug || !Number.isInteger(line.quantity) || line.quantity < 1) continue;
+    const existing = merged.get(line.product.slug);
+    merged.set(line.product.slug, {
+      product: line.product,
+      quantity: Math.min(99, (existing?.quantity || 0) + line.quantity),
+    });
+  }
+  return [...merged.values()];
+}
+
+function mergeWishlist(...groups: Product[][]) {
+  return [...new Map(groups.flat().filter((product) => product?.slug).map((product) => [product.slug, product])).values()];
 }
 
 export function ShopStateProvider({ children }: { children: React.ReactNode }) {
@@ -40,53 +55,117 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [wishlistItems, setWishlistItems] = useState<Product[]>([]);
   const [notice, setNotice] = useState<ShopNotice | null>(null);
-  const hydratedStorageKey = useRef<string | null>(null);
-  const { user } = useAuthState();
+  const [persistenceError, setPersistenceError] = useState("");
+  const hydratedOwner = useRef("");
+  const previousOwner = useRef("");
+  const cartRef = useRef(cart);
+  const wishlistItemsRef = useRef(wishlistItems);
+  const { isAuthReady, user } = useAuthState();
   const clearCart = useCallback(() => setCart([]), []);
+  const visiblePersistenceError = user?.id && !supabase
+    ? "Supabase is not configured. Your signed-in cart and wishlist cannot be saved."
+    : persistenceError;
 
   useEffect(() => {
-    const cartKey = getScopedStorageKey(CART_KEY, user?.email);
-    const wishlistKey = getScopedStorageKey(WISHLIST_KEY, user?.email);
-    hydratedStorageKey.current = null;
+    cartRef.current = cart;
+    wishlistItemsRef.current = wishlistItems;
+  }, [cart, wishlistItems]);
 
+  useEffect(() => {
+    if (!isAuthReady) return;
+    if (user?.id && !supabase) return;
+
+    let active = true;
+    const owner = user?.id || "guest";
+    const preserveCurrent = !previousOwner.current || previousOwner.current === "guest";
+    const inMemoryCart = preserveCurrent ? cartRef.current : [];
+    const inMemoryWishlist = preserveCurrent ? wishlistItemsRef.current : [];
+
+    if (previousOwner.current && previousOwner.current !== owner && !preserveCurrent) {
+      setCart([]);
+      setWishlist([]);
+      setWishlistItems([]);
+    }
+    previousOwner.current = owner;
+    hydratedOwner.current = "";
+
+    const session = user?.id && supabase
+      ? supabase.auth.getSession()
+      : Promise.resolve({ data: { session: null }, error: null });
+
+    void session.then(async ({ data, error }) => {
+      if (error) throw new Error(error.message);
+      const token = data.session?.access_token;
+      if (user?.id && !token) throw new Error("Your session expired. Sign in again to load saved shopping data.");
+
+      const response = await fetch("/api/customer-shop-state", {
+        cache: "no-store",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const result = await response.json() as { state?: PersistedShopState; guestState?: PersistedShopState; error?: string };
+      if (!response.ok || !result.state) throw new Error(result.error || "Could not load your saved cart and wishlist.");
+      if (!active) return;
+
+      const persistedState = user?.id ? result.state : result.guestState;
+      const customerCart = Array.isArray(persistedState?.cart) ? persistedState.cart : [];
+      const guestCart = user?.id && Array.isArray(result.guestState?.cart) ? result.guestState.cart : [];
+      const customerWishlist = Array.isArray(persistedState?.wishlist) ? persistedState.wishlist : [];
+      const guestWishlist = user?.id && Array.isArray(result.guestState?.wishlist) ? result.guestState.wishlist : [];
+      const nextCart = mergeCart(customerCart, guestCart, inMemoryCart);
+      const nextWishlist = mergeWishlist(customerWishlist, guestWishlist, inMemoryWishlist);
+
+      setCart(nextCart);
+      setWishlist(nextWishlist.map((product) => product.slug));
+      setWishlistItems(nextWishlist);
+      hydratedOwner.current = owner;
+      setPersistenceError("");
+    }).catch((loadError: unknown) => {
+      if (active) setPersistenceError(loadError instanceof Error ? loadError.message : "Could not load your saved cart and wishlist.");
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthReady, user?.id]);
+
+  useEffect(() => {
+    const owner = user?.id || (isAuthReady ? "guest" : "");
+    if (!owner || hydratedOwner.current !== owner || (user?.id && !supabase)) return;
+    let active = true;
     const timer = window.setTimeout(() => {
-      try {
-        const storedCart = window.localStorage.getItem(cartKey);
-        const storedWishlist = window.localStorage.getItem(wishlistKey);
-        const storedWishlistItems = window.localStorage.getItem(`${wishlistKey}:items`);
-        setCart(storedCart ? (JSON.parse(storedCart) as CartLine[]) : []);
-        setWishlist(storedWishlist ? (JSON.parse(storedWishlist) as string[]) : []);
-        setWishlistItems(storedWishlistItems ? (JSON.parse(storedWishlistItems) as Product[]) : []);
-      } catch {
-        window.localStorage.removeItem(cartKey);
-        window.localStorage.removeItem(wishlistKey);
-        setCart([]);
-        setWishlist([]);
-        setWishlistItems([]);
-      }
-      hydratedStorageKey.current = cartKey;
-    }, 0);
+      const session = user?.id && supabase
+        ? supabase.auth.getSession()
+        : Promise.resolve({ data: { session: null }, error: null });
 
-    return () => window.clearTimeout(timer);
-  }, [user?.email]);
-
-  useEffect(() => {
-    const cartKey = getScopedStorageKey(CART_KEY, user?.email);
-    if (hydratedStorageKey.current !== cartKey) return;
-    window.localStorage.setItem(cartKey, JSON.stringify(cart));
-  }, [cart, user?.email]);
-
-  useEffect(() => {
-    const wishlistKey = getScopedStorageKey(WISHLIST_KEY, user?.email);
-    if (hydratedStorageKey.current !== getScopedStorageKey(CART_KEY, user?.email)) return;
-    window.localStorage.setItem(wishlistKey, JSON.stringify(wishlist));
-    window.localStorage.setItem(`${wishlistKey}:items`, JSON.stringify(wishlistItems));
-  }, [wishlist, wishlistItems, user?.email]);
+      void session.then(async ({ data, error }) => {
+        if (error) throw new Error(error.message);
+        const token = data.session?.access_token;
+        if (user?.id && !token) throw new Error("Your session expired. Sign in again to save shopping data.");
+        const response = await fetch("/api/customer-shop-state", {
+          method: "PUT",
+          credentials: "include",
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), "Content-Type": "application/json" },
+          body: JSON.stringify({ cart, wishlist: wishlistItems }),
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || "Could not save your cart and wishlist.");
+        if (active) setPersistenceError("");
+      }).catch((saveError: unknown) => {
+        if (active) setPersistenceError(saveError instanceof Error ? saveError.message : "Could not save your cart and wishlist.");
+      });
+    }, 500);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [cart, isAuthReady, user?.id, wishlistItems]);
 
   const value = useMemo<ShopState>(() => ({
     cart,
     wishlist,
     cartCount: cart.reduce((total, line) => total + line.quantity, 0),
+    persistenceError: visiblePersistenceError,
     clearCart,
     addToCart: (product) => {
       setCart((current) => {
@@ -120,7 +199,7 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
     },
     isWishlisted: (slug) => wishlist.includes(slug),
     wishlistItems,
-  }), [cart, clearCart, wishlist, wishlistItems]);
+  }), [cart, clearCart, visiblePersistenceError, wishlist, wishlistItems]);
 
   return (
     <ShopStateContext.Provider value={value}>
@@ -134,6 +213,7 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
           </span>
         </div>
       ) : null}
+      {visiblePersistenceError ? <div className="fixed bottom-4 left-4 z-[60] max-w-md rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 shadow-lg" role="alert">{visiblePersistenceError}</div> : null}
     </ShopStateContext.Provider>
   );
 }

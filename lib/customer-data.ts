@@ -30,10 +30,16 @@ export type CustomerOrder = {
 
 export type CustomerServiceRequest = {
   id: string;
+  request_type: "service" | "amc" | "enquiry";
   subject: string;
   message: string;
   phone: string | null;
+  city: string | null;
+  address: string | null;
+  qr_value: string;
   status: string;
+  completed_by_name: string | null;
+  completed_at: string | null;
   created_at: string;
 };
 
@@ -43,6 +49,9 @@ export type CustomerProfile = {
   phone: string | null;
   security_question: string | null;
   security_answer_hash: string | null;
+  addresses: Array<{ id: string; label: string; line1: string; city: string; state: string; pincode: string; phone: string; isDefault?: boolean; createdAt?: string }>;
+  notification_preferences: Record<string, boolean>;
+  payment_preferences: { method: string; upiId?: string; cardLabel?: string };
   created_at: string;
 };
 
@@ -76,9 +85,9 @@ export async function getCustomerAccount(userId: string) {
   if (!supabase) return { profile: null, orders: [], serviceRequests: [], error: "Database is not configured." };
 
   const [profileResult, ordersResult, requestsResult] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,phone,security_question,security_answer_hash,created_at").eq("id", userId).maybeSingle(),
+    supabase.from("profiles").select("full_name,email,phone,security_question,security_answer_hash,addresses,notification_preferences,payment_preferences,created_at").eq("id", userId).maybeSingle(),
     supabase.from("orders").select("id,order_number,status,payment_status,subtotal,gst,shipping,total,created_at,shiprocket_awb_code,shiprocket_courier_name,shiprocket_tracking_url,order_items(id,product_id,product_name,product_slug,product_image,sku,unit_price,quantity,line_total)").eq("customer_id", userId).order("created_at", { ascending: false }),
-    supabase.from("service_requests").select("id,subject,message,phone,status,created_at").eq("customer_id", userId).order("created_at", { ascending: false }),
+    supabase.from("service_requests").select("id,request_type,subject,message,phone,city,address,qr_value,status,completed_by_name,completed_at,created_at").eq("customer_id", userId).order("created_at", { ascending: false }),
   ]);
 
   const error = profileResult.error || ordersResult.error || requestsResult.error;

@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, ProductModel, deleteModelById, getBrandListFromStore, getModelListFromStore, saveModelList, slugifyModelName, upsertModel } from "@/lib/catalog";
+import { Brand, ProductModel, deleteModelById, getBrandListFromStore, getModelListFromStore, getProductsFromStore, saveModelList, slugifyModelName, upsertModel } from "@/lib/catalog";
 
 export default function AdminModelsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [models, setModels] = useState<ProductModel[]>([]);
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [] as Array<{ name: string; image: string; price: string }>, price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" as ProductModel["status"] });
+  const [form, setForm] = useState({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [] as Array<{ name: string; image: string; price: string }>, price: "", inventory: "0", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" as ProductModel["status"] });
 
   useEffect(() => {
-    void Promise.all([getBrandListFromStore(), getModelListFromStore()]).then(([nextBrands, nextModels]) => {
+    void Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]).then(([nextBrands, nextModels, products]) => {
       setBrands(nextBrands);
-      setModels(nextModels);
+      setModels(nextModels.map((model) => {
+        const linkedProduct = products.find((product) =>
+          product.modelId === model.id
+          || product.modelSlug === model.slug
+          || (product.brandId === model.brandId && product.model?.toLowerCase() === model.name.toLowerCase()),
+        );
+        return linkedProduct ? { ...model, inventory: linkedProduct.inventory } : model;
+      }));
     });
   }, []);
 
@@ -65,6 +72,7 @@ export default function AdminModelsPage() {
       gallery: form.gallery.length ? form.gallery : [form.image || "/RO1.jpeg"],
       colors: form.colors.filter((color) => color.name.trim() && color.image && color.price !== "").map((color) => ({ ...color, name: color.name.trim(), price: Number(color.price) })),
       price: form.price ? Number(form.price) : undefined,
+      inventory: Math.max(0, Math.floor(Number(form.inventory) || 0)),
       newArrival: form.newArrival,
       bestSeller: form.bestSeller,
       deal: form.deal,
@@ -73,14 +81,14 @@ export default function AdminModelsPage() {
     });
 
     const updated = [...models.filter((model) => model.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
-    const error = await saveModelList(updated);
+    const error = await saveModelList(updated, [next.id]);
     setIsSaving(false);
     if (error) {
       setSaveError(`Could not save model to Supabase: ${error}`);
       return;
     }
     setModels(updated);
-    setForm({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" });
+    setForm({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", inventory: "0", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" });
   }
 
   function handleEdit(model: ProductModel) {
@@ -95,6 +103,7 @@ export default function AdminModelsPage() {
       gallery: model.gallery?.length ? model.gallery : [model.image],
       colors: (model.colors ?? []).map((color) => ({ ...color, price: color.price === undefined ? "" : String(color.price) })),
       price: model.price === undefined ? "" : String(model.price),
+      inventory: String(model.inventory ?? 0),
       newArrival: Boolean(model.newArrival),
       bestSeller: Boolean(model.bestSeller),
       deal: Boolean(model.deal),
@@ -163,6 +172,10 @@ export default function AdminModelsPage() {
               <input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="49999" />
             </div>
             <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Available stock</label>
+              <input type="number" min="0" step="1" value={form.inventory} onChange={(event) => setForm((current) => ({ ...current, inventory: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 outline-none ring-0" placeholder="0" />
+            </div>
+            <div>
               <div className="flex items-center justify-between gap-3">
                 <label className="block text-sm font-medium text-slate-700">Colour options</label>
                 <button type="button" onClick={() => setForm((current) => ({ ...current, colors: [...current.colors, { name: "", image: "/RO1.jpeg", price: "" }] }))} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Add colour</button>
@@ -192,7 +205,7 @@ export default function AdminModelsPage() {
             </div>
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={isSaving} className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60">{isSaving ? "Saving..." : "Save model"}</button>
-              <button type="button" onClick={() => setForm({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
+              <button type="button" onClick={() => setForm({ id: "", brandId: "", name: "", slug: "", description: "", colorName: "", image: "/RO1.jpeg", gallery: ["/RO1.jpeg"], colors: [], price: "", inventory: "0", newArrival: false, bestSeller: false, deal: false, featured: false, status: "active" })} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
             </div>
             {saveError ? <p className="mt-4 text-sm text-rose-700" role="alert">{saveError}</p> : null}
           </div>

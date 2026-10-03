@@ -36,7 +36,7 @@ export default async function AdminCustomerGroupPage({ params }: { params: Promi
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Customer details</h2>
-        <ul className="mt-4 grid gap-3 md:grid-cols-2">
+        {customerGroup.customers.length ? <ul className="mt-4 grid gap-3 md:grid-cols-2">
           {customerGroup.customers.map((customer) => {
             const statusStyles = {
               Active: "bg-emerald-100 text-emerald-700",
@@ -79,7 +79,7 @@ export default async function AdminCustomerGroupPage({ params }: { params: Promi
               </li>
             );
           })}
-        </ul>
+        </ul> : <p className="mt-4 text-sm text-slate-600">No customer records are available yet.</p>}
       </div>
     </div>
   );

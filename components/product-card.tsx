@@ -7,6 +7,7 @@ import { useShopState } from "@/components/shop-state";
 export function ProductCard({ product }: { product: Product }) {
   const { addToCart, isWishlisted, toggleWishlist } = useShopState();
   const wishlisted = isWishlisted(product.slug);
+  const isOutOfStock = product.inventory <= 0 || product.stockStatus === "out-of-stock";
 
   return (
     <article className="group overflow-hidden rounded-3xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-sm">
@@ -43,8 +44,8 @@ export function ProductCard({ product }: { product: Product }) {
           <Link href={`/products/${product.slug}`} className="flex-1 rounded-full bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-slate-700">
             View product
           </Link>
-          <button type="button" onClick={() => addToCart(product)} className="secondary-action rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
-            Add to cart
+          <button type="button" disabled={isOutOfStock} onClick={() => addToCart(product)} className="secondary-action rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+            {isOutOfStock ? "Out of stock" : "Add to cart"}
           </button>
         </div>
       </div>

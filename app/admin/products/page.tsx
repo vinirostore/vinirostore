@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brand, Product, getBrandList, getProductsFromStoreSync, saveProductsToStore, upsertProduct } from "@/lib/catalog";
+import { Brand, Product, deleteProductById, getBrandListFromStore, getProductsFromStore, saveProductsToStore, upsertProduct } from "@/lib/catalog";
 
 const defaultForm = {
   id: "",
@@ -39,10 +39,16 @@ export default function AdminProductsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [form, setForm] = useState(defaultForm);
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setBrands(getBrandList());
-    setProducts(getProductsFromStoreSync());
+    void Promise.all([getBrandListFromStore(), getProductsFromStore()])
+      .then(([nextBrands, nextProducts]) => {
+        setBrands(nextBrands);
+        setProducts(nextProducts);
+      })
+      .catch((loadError: unknown) => setSaveError(loadError instanceof Error ? loadError.message : "Could not load the Supabase product catalog."));
   }, []);
 
   const sortedProducts = useMemo(() => [...products].sort((a, b) => a.name.localeCompare(b.name)), [products]);
@@ -81,9 +87,11 @@ export default function AdminProductsPage() {
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.brandId) return;
+    if (!form.brandId || isSaving) return;
+    setIsSaving(true);
+    setSaveError("");
 
     const selectedBrand = brands.find((brand) => brand.id === form.brandId);
     const galleryImages = form.gallery.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
@@ -119,9 +127,14 @@ export default function AdminProductsPage() {
       warranty: form.warranty || undefined,
     });
 
-    const updated = [...getProductsFromStoreSync().filter((product) => product.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
+    const updated = [...products.filter((product) => product.id !== next.id), next].sort((a, b) => a.name.localeCompare(b.name));
+    const error = await saveProductsToStore(updated);
+    setIsSaving(false);
+    if (error) {
+      setSaveError(`Could not save product to Supabase: ${error}`);
+      return;
+    }
     setProducts(updated);
-    saveProductsToStore(updated);
     setForm(defaultForm);
   }
 
@@ -159,10 +172,19 @@ export default function AdminProductsPage() {
     });
   }
 
-  function handleDelete(id: string) {
-    const updated = getProductsFromStoreSync().filter((product) => product.id !== id);
-    setProducts(updated);
-    saveProductsToStore(updated);
+  async function handleDelete(id: string) {
+    if (isSaving) return;
+    const product = products.find((item) => item.id === id);
+    if (!product || !window.confirm(`Delete ${product.name}? This action cannot be undone.`)) return;
+    setIsSaving(true);
+    setSaveError("");
+    const result = await deleteProductById(id, products);
+    setIsSaving(false);
+    if (result.error) {
+      setSaveError(`Could not delete product from Supabase: ${result.error}`);
+      return;
+    }
+    setProducts(result.products);
   }
 
   return (
@@ -171,6 +193,7 @@ export default function AdminProductsPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Products</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900">Catalog management</h1>
       </div>
+      {saveError ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{saveError}</p> : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <form onSubmit={handleSubmit} className="rounded-[28px] border border-slate-200 bg-white p-6">
@@ -324,7 +347,7 @@ export default function AdminProductsPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Save product</button>
+              <button type="submit" disabled={isSaving} className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">{isSaving ? "Saving..." : "Save product"}</button>
               <button type="button" onClick={() => setForm(defaultForm)} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700">Reset</button>
             </div>
           </div>

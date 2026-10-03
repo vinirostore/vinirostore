@@ -64,7 +64,7 @@ export function AccessoryDetail({ initialAccessory }: { initialAccessory?: Acces
           </div>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <button type="button" onClick={() => addToCart(accessoryProduct)} className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Add to cart</button>
+            <button type="button" disabled={accessory.stock <= 0} onClick={() => addToCart(accessoryProduct)} className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{accessory.stock <= 0 ? "Out of stock" : "Add to cart"}</button>
             <button type="button" onClick={() => toggleWishlist(accessory.slug, accessoryProduct)} className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700">{wishlisted ? "♥ Wishlisted" : "♡ Add to wishlist"}</button>
           </div>
 

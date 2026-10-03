@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyCashfreeWebhookSignature } from "@/lib/cashfree";
+import { sendOrderConfirmation } from "@/lib/order-confirmation";
 import { getPaymentAdminClient } from "@/lib/payment-auth";
 
 export const runtime = "nodejs";
@@ -47,12 +48,13 @@ export async function POST(request: Request) {
       const paymentId = typeof payment.cf_payment_id === "string" || typeof payment.cf_payment_id === "number"
         ? String(payment.cf_payment_id)
         : null;
-      const { error: updateError } = await supabase.from("orders").update({
+      const { data: confirmedOrder, error: updateError } = await supabase.from("orders").update({
         payment_status: "paid",
         status: localOrder.status === "pending" ? "processing" : localOrder.status,
         cashfree_payment_id: paymentId,
-      }).eq("id", localOrder.id).neq("payment_status", "paid");
+      }).eq("id", localOrder.id).neq("payment_status", "paid").select("id").maybeSingle();
       if (updateError) return NextResponse.json({ error: "Unable to save payment status." }, { status: 500 });
+      if (confirmedOrder) await sendOrderConfirmation(supabase, confirmedOrder.id);
     } else if (["PAYMENT_FAILED_WEBHOOK", "PAYMENT_USER_DROPPED_WEBHOOK"].includes(eventType) && localOrder.payment_status !== "paid") {
       const { error: updateError } = await supabase.from("orders").update({ payment_status: "failed" })
         .eq("id", localOrder.id).neq("payment_status", "paid");

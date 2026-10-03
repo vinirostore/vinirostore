@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cashfreeRequest, type CashfreeOrder } from "@/lib/cashfree";
+import { sendOrderConfirmation } from "@/lib/order-confirmation";
 import { authenticatePaymentCustomer, getPaymentAdminClient } from "@/lib/payment-auth";
 
 export const runtime = "nodejs";
@@ -47,12 +48,13 @@ export async function POST(request: Request) {
       if (orderStatus === "pending") orderStatus = "processing";
       const payments = await cashfreeRequest<CashfreePaymentList>(`/orders/${encodeURIComponent(cashfreeOrderId)}/payments`, { method: "GET" });
       paymentId = Array.isArray(payments) ? payments.find((payment) => payment.payment_status === "SUCCESS")?.cf_payment_id : undefined;
-      const { error: updateError } = await supabase.from("orders").update({
+      const { data: confirmedOrder, error: updateError } = await supabase.from("orders").update({
         payment_status: paymentStatus,
         status: orderStatus,
         ...(paymentId ? { cashfree_payment_id: paymentId } : {}),
-      }).eq("id", localOrder.id);
+      }).eq("id", localOrder.id).neq("payment_status", "paid").select("id").maybeSingle();
       if (updateError) return errorResponse("Payment is confirmed, but the order update failed. Contact support.", 500);
+      if (confirmedOrder) await sendOrderConfirmation(supabase, confirmedOrder.id);
     } else if (["EXPIRED", "TERMINATED"].includes(remoteOrder.order_status) && paymentStatus !== "paid") {
       paymentStatus = "failed";
       const { error: updateError } = await supabase.from("orders").update({ payment_status: paymentStatus }).eq("id", localOrder.id).neq("payment_status", "paid");

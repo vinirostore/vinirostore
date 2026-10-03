@@ -68,20 +68,30 @@ export async function POST(request: Request) {
     const supabase = getPaymentAdminClient();
     const cartItems = [...quantities.values()];
     const productIds = [...new Set(cartItems.map((item) => item.productId))];
-    const [productsResult, accessoriesResult, profileResult] = await Promise.all([
-      supabase.from("products").select("id,name,slug,sku,price,inventory,stock_status,status,image,model_id").in("id", productIds),
-      supabase.from("accessories").select("id,name,slug,price,stock,status,image").in("id", productIds),
-      supabase.from("profiles").select("email,full_name").eq("id", identity.user.id).maybeSingle(),
+    const directModelIds = [...new Set(productIds
+      .filter((id) => id.startsWith("model:"))
+      .map((id) => id.slice("model:".length))
+      .filter(Boolean))];
+    const databaseProductIds = productIds.filter((id) => !id.startsWith("model:"));
+    const [productsResult, accessoriesResult] = await Promise.all([
+      databaseProductIds.length
+        ? supabase.from("products").select("id,name,slug,sku,price,inventory,stock_status,status,image,model_id").in("id", databaseProductIds)
+        : Promise.resolve({ data: [], error: null }),
+      databaseProductIds.length
+        ? supabase.from("accessories").select("id,name,slug,price,stock,status,image").in("id", databaseProductIds)
+        : Promise.resolve({ data: [], error: null }),
     ]);
-    if (productsResult.error || accessoriesResult.error || profileResult.error) {
+    if (productsResult.error || accessoriesResult.error) {
       return errorResponse("Unable to verify your cart or account. Please try again.", 503);
     }
-    if (!profileResult.data) return errorResponse("Your customer profile could not be found.", 400);
 
     const productRows = (productsResult.data || []) as CatalogRow[];
-    const modelIds = [...new Set(productRows.map((product) => text(product.model_id)).filter(Boolean))];
+    const modelIds = [...new Set([
+      ...productRows.map((product) => text(product.model_id)).filter(Boolean),
+      ...directModelIds,
+    ])];
     const modelsResult = modelIds.length
-      ? await supabase.from("models").select("id,color_name,image,colors").in("id", modelIds)
+      ? await supabase.from("models").select("id,name,slug,price,inventory,status,image,colors").in("id", modelIds)
       : { data: [], error: null };
     if (modelsResult.error) return errorResponse("Unable to verify model color pricing. Please try again.", 503);
 
@@ -91,6 +101,15 @@ export async function POST(request: Request) {
       if (!catalog.has(String(row.id))) catalog.set(String(row.id), row);
     }
     const modelsById = new Map(((modelsResult.data || []) as CatalogRow[]).map((model) => [String(model.id), model]));
+    for (const modelId of directModelIds) {
+      const model = modelsById.get(modelId);
+      if (model) catalog.set(`model:${modelId}`, {
+        ...model,
+        id: `model:${modelId}`,
+        model_id: modelId,
+        sku: `MODEL-${modelId}`,
+      });
+    }
 
     const orderItems = [];
     let subtotal = 0;
@@ -157,7 +176,7 @@ export async function POST(request: Request) {
         customer_details: {
           customer_id: identity.user.id.replace(/-/g, "").slice(0, 50),
           customer_name: name,
-          customer_email: profileResult.data.email,
+          customer_email: identity.user.email,
           customer_phone: phone,
         },
         order_meta: orderMeta,
@@ -168,6 +187,21 @@ export async function POST(request: Request) {
     if (!cashfreeOrder.payment_session_id || cashfreeOrder.order_status !== "ACTIVE") {
       return errorResponse("Cashfree did not create an active payment session. Please try again.", 502);
     }
+
+    const metadata = identity.user.user_metadata || {};
+    const { error: profileError } = await supabase.from("profiles").upsert({
+      id: identity.user.id,
+      email: identity.user.email,
+      full_name: name,
+      phone,
+      ...(typeof metadata.securityQuestion === "string" && metadata.securityQuestion
+        ? { security_question: metadata.securityQuestion }
+        : {}),
+      ...(typeof metadata.securityAnswerHash === "string" && metadata.securityAnswerHash
+        ? { security_answer_hash: metadata.securityAnswerHash }
+        : {}),
+    });
+    if (profileError) return errorResponse("Your customer details could not be saved. Please try again.", 500);
 
     const { data: order, error: orderError } = await supabase.from("orders").insert({
       customer_id: identity.user.id,

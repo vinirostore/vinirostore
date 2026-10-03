@@ -7,10 +7,11 @@ import { useShopState } from "@/components/shop-state";
 export function ProductActions({ product }: { product: Product }) {
   const { addToCart, isWishlisted, removeFromCart, toggleWishlist } = useShopState();
   const wishlisted = isWishlisted(product.slug);
+  const isOutOfStock = product.inventory <= 0 || product.stockStatus === "out-of-stock";
 
   return (
     <div className="flex flex-wrap gap-3">
-      <button type="button" onClick={() => addToCart(product)} className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white">Add to cart</button>
+      <button type="button" disabled={isOutOfStock} onClick={() => addToCart(product)} className="rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{isOutOfStock ? "Out of stock" : "Add to cart"}</button>
       <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="rounded-full border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700" aria-label={`${wishlisted ? "Remove" : "Add"} ${product.name} ${wishlisted ? "from" : "to"} wishlist`}>
         {wishlisted ? "♥ Wishlisted" : "♡ Wishlist"}
       </button>
