@@ -209,6 +209,7 @@ export default function BrandModelDetailPage() {
         colorOptions={colorOptions}
         selectedColorIndex={selectedColorIndex}
         onColorSelect={setSelectedColorIndex}
+        modelId={model.id}
       />
       <SiteFooter />
     </>

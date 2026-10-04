@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useShopState } from "@/components/shop-state";
+import { ModelReviews } from "@/components/model-reviews";
 import type { Product } from "@/lib/catalog";
 
 export type ProductDetailRecommendation = {
@@ -29,6 +30,7 @@ type ProductDetailExperienceProps = {
   colorOptions?: Array<{ name: string; image: string; price?: number; isPrimary?: boolean }>;
   selectedColorIndex?: number;
   onColorSelect?: (index: number) => void;
+  modelId?: string;
 };
 
 function Icon({ name, className = "" }: { name: "heart" | "zoom" | "truck" | "shield" | "support" | "check"; className?: string }) {
@@ -60,6 +62,7 @@ export function ProductDetailExperience({
   colorOptions = [],
   selectedColorIndex = 0,
   onColorSelect,
+  modelId,
 }: ProductDetailExperienceProps) {
   const router = useRouter();
   const { addToCart, isWishlisted, toggleWishlist } = useShopState();
@@ -165,10 +168,10 @@ export function ProductDetailExperience({
             <p className="product-subtitle">{subtitle ?? (product.category === "ro" ? "Premium RO Water Purifier" : product.category.replace(/-/g, " "))}</p>
             <p className="product-short-description">{product.shortDescription || product.description}</p>
 
-            <div className="product-review-summary" aria-label="Customer reviews are not available yet">
-              <span className="review-unavailable">New to Vini RO Store</span>
+            <div className="product-review-summary" aria-label={modelId ? "Customer reviews" : "Customer reviews are not available yet"}>
+              <span className="review-unavailable">{modelId ? "CUSTOMER FEEDBACK" : "New to Vini RO Store"}</span>
               <span className="review-divider" />
-              <a href="#product-reviews">Be the first to review</a>
+              <a href="#product-reviews">{modelId ? "Read customer reviews" : "Be the first to review"}</a>
             </div>
 
             <div className="product-price-block">
@@ -255,7 +258,7 @@ export function ProductDetailExperience({
 
         <section className="product-info-section" id="product-reviews">
           <div className="product-section-heading"><span>FROM OUR CUSTOMERS</span><h2>Reviews</h2></div>
-          <div className="product-empty-card product-review-empty"><span className="review-empty-stars" aria-hidden="true">☆ ☆ ☆ ☆ ☆</span><div><strong>No reviews yet</strong><p>There aren’t any customer reviews for this model yet. Be the first to share your experience.</p><Link href="/help">Contact us about this model <span aria-hidden="true">→</span></Link></div></div>
+          {modelId ? <ModelReviews modelId={modelId} modelName={title} /> : <div className="product-empty-card product-review-empty"><span className="review-empty-stars" aria-hidden="true">☆ ☆ ☆ ☆ ☆</span><div><strong>No reviews yet</strong><p>There aren’t any customer reviews for this model yet. Be the first to share your experience.</p><Link href="/help">Contact us about this model <span aria-hidden="true">→</span></Link></div></div>}
         </section>
 
         <section className="product-info-section product-faq-section" id="product-faqs">

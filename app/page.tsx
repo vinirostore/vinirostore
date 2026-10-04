@@ -5,8 +5,11 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { HomeShopping } from "@/app/home-shopping";
 import {
+  brands as defaultBrands,
   defaultModels,
   products as defaultProducts,
+  getBrandList,
+  getBrandListFromStore,
   getModelList,
   getModelListFromStore,
   getProductsFromStore,
@@ -15,6 +18,7 @@ import {
 } from "@/lib/catalog";
 
 export default function HomePage() {
+  const brands = useSyncExternalStore(subscribeToCatalogUpdates, getBrandList, () => defaultBrands);
   const products = useSyncExternalStore(subscribeToCatalogUpdates, getProductsFromStoreSync, () => defaultProducts);
   const models = useSyncExternalStore(subscribeToCatalogUpdates, getModelList, () => defaultModels);
   const [catalogError, setCatalogError] = useState("");
@@ -22,7 +26,7 @@ export default function HomePage() {
   useEffect(() => {
     const syncProducts = async () => {
       try {
-        await Promise.all([getProductsFromStore(), getModelListFromStore()]);
+        await Promise.all([getBrandListFromStore(), getProductsFromStore(), getModelListFromStore()]);
         setCatalogError("");
       } catch (error) {
         console.error("Could not refresh the home catalog:", error);
@@ -42,7 +46,7 @@ export default function HomePage() {
   return (
     <>
       <SiteHeader />
-      <HomeShopping products={products} models={models} modelsLoaded catalogError={catalogError} />
+      <HomeShopping brands={brands} products={products} models={models} modelsLoaded catalogError={catalogError} />
       <SiteFooter />
     </>
   );
