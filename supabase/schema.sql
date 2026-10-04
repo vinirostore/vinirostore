@@ -173,6 +173,21 @@ alter table public.models add column if not exists best_seller boolean not null 
 alter table public.models add column if not exists featured boolean not null default false;
 alter table public.models add column if not exists deal boolean not null default false;
 
+create table if not exists public.model_reviews (
+  id uuid primary key default gen_random_uuid(),
+  model_id text not null references public.models(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  display_name text not null check (char_length(trim(display_name)) between 1 and 80),
+  rating smallint not null check (rating between 1 and 5),
+  review text not null check (char_length(trim(review)) between 10 and 1500),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint model_reviews_model_user_key unique (model_id, user_id)
+);
+
+create index if not exists model_reviews_model_created_idx
+  on public.model_reviews (model_id, created_at desc);
+
 create table if not exists public.products (
   id text primary key,
   name text not null,
@@ -238,6 +253,7 @@ alter table public.brands enable row level security;
 alter table public.models enable row level security;
 alter table public.products enable row level security;
 alter table public.accessories enable row level security;
+alter table public.model_reviews enable row level security;
 
 drop policy if exists "Anyone can view catalog" on public.brands;
 create policy "Anyone can view catalog" on public.brands for select using (true);
@@ -247,6 +263,14 @@ drop policy if exists "Anyone can view products" on public.products;
 create policy "Anyone can view products" on public.products for select using (true);
 drop policy if exists "Anyone can view accessories" on public.accessories;
 create policy "Anyone can view accessories" on public.accessories for select using (true);
+drop policy if exists "Anyone can view model reviews" on public.model_reviews;
+create policy "Anyone can view model reviews" on public.model_reviews for select using (true);
+drop policy if exists "Customers can create their model reviews" on public.model_reviews;
+create policy "Customers can create their model reviews" on public.model_reviews for insert to authenticated with check (auth.uid() = user_id);
+drop policy if exists "Customers can update their model reviews" on public.model_reviews;
+create policy "Customers can update their model reviews" on public.model_reviews for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+grant select on public.model_reviews to anon, authenticated;
+grant insert, update on public.model_reviews to authenticated;
 
 drop policy if exists "Authenticated admins can manage brands" on public.brands;
 create policy "Authenticated admins can manage brands" on public.brands for all using (auth.jwt() ->> 'email' = 'vinirostore@gmail.com') with check (auth.jwt() ->> 'email' = 'vinirostore@gmail.com');

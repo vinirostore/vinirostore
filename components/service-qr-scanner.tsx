@@ -130,7 +130,14 @@ export function ServiceQrScanner({ mode = "admin" }: { mode?: "admin" | "technic
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <div id="service-qr-reader" className="mx-auto w-full max-w-lg" />
+        <div className="relative mx-auto w-full max-w-lg">
+          <div id="service-qr-reader" />
+          {result?.success ? <div aria-hidden="true" className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-emerald-950/90 p-6 text-center text-white">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-400 text-3xl font-bold text-emerald-950">✓</span>
+            <p className="mt-4 text-xl font-bold">QR scanned successfully</p>
+            <p className="mt-2 text-sm leading-6 text-emerald-50">{result.message}</p>
+          </div> : null}
+        </div>
         {!isReady ? <p className="mt-3 text-center text-xs text-slate-500">Preparing scanner...</p> : null}
         {isReady && !isScanning ? <button type="button" onClick={() => void startScanner()} disabled={isStarting} className="service-primary-button mt-4 w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60">{isStarting ? "Opening camera..." : "Start camera"}</button> : null}
         {isScanning ? <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-medium text-emerald-800">Camera ready. Point it at the customer&apos;s QR.</p><button type="button" onClick={() => void stopScanner()} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700">Stop camera</button></div> : null}

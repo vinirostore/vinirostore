@@ -46,7 +46,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   if (!isAuthReady || !isAuthenticated || !isSupabaseAuthenticated || !isAdminAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) return null;
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800">
+    <div className="admin-shell min-h-screen bg-slate-100 text-slate-800">
       <button
         type="button"
         aria-label={isMenuOpen ? "Close admin menu" : "Open admin menu"}

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Product, ProductModel, getBrandList } from "@/lib/catalog";
+import { Brand, Product, ProductModel } from "@/lib/catalog";
 
-function ModelCard({ model }: { model: ProductModel }) {
-  const brandSlug = getBrandList().find((brand) => brand.id === model.brandId)?.slug ?? model.brandId;
+function ModelCard({ model, brands }: { model: ProductModel; brands: Brand[] }) {
+  const brandSlug = brands.find((brand) => brand.id === model.brandId)?.slug ?? model.brandId;
   const colorCount = model.colors?.length ?? 0;
   return <Link href={`/brands/${brandSlug}/${model.slug}`} className="model-showcase-card group">
     <div className="model-showcase-image">
@@ -17,8 +17,8 @@ function ModelCard({ model }: { model: ProductModel }) {
   </Link>;
 }
 
-function MobileModelCard({ model }: { model: ProductModel }) {
-  const brand = getBrandList().find((item) => item.id === model.brandId);
+function MobileModelCard({ model, brands }: { model: ProductModel; brands: Brand[] }) {
+  const brand = brands.find((item) => item.id === model.brandId);
   const brandSlug = brand?.slug ?? model.brandId;
   const badges = [
     [model.newArrival, "New arrival"],
@@ -114,7 +114,7 @@ function interleaveModelsByBrand(models: ProductModel[]) {
   return interleaved;
 }
 
-function ModelShowcase({ title, eyebrow, models, href }: { title: string; eyebrow: string; models: ProductModel[]; href: string }) {
+function ModelShowcase({ title, eyebrow, models, brands, href }: { title: string; eyebrow: string; models: ProductModel[]; brands: Brand[]; href: string }) {
   const railRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
 
@@ -146,7 +146,7 @@ function ModelShowcase({ title, eyebrow, models, href }: { title: string; eyebro
         <div className="shop-section-actions"><Link href={href}>View all <span aria-hidden="true">→</span></Link><button type="button" onClick={() => move(-1)} aria-label={`Previous ${title}`}>&larr;</button><button type="button" onClick={() => move(1)} aria-label={`Next ${title}`}>&rarr;</button></div>
       </div>
       <div ref={railRef} className={`product-showcase-list ${models.length === 1 ? "single-product" : ""}`} onPointerEnter={() => setPaused(true)} onPointerLeave={() => setPaused(false)} onTouchStart={() => setPaused(true)}>
-        {models.map((model) => <div className="product-showcase-item" key={model.id}><ModelCard model={model} /></div>)}
+        {models.map((model) => <div className="product-showcase-item" key={model.id}><ModelCard model={model} brands={brands} /></div>)}
       </div>
     </section>
   );
@@ -156,7 +156,7 @@ function ModelsLoading() {
   return <div className="models-loading" role="status" aria-live="polite"><span aria-hidden="true" />Loading models...</div>;
 }
 
-export function HomeShopping({ products, models, modelsLoaded, catalogError = "" }: { products: Product[]; models: ProductModel[]; modelsLoaded: boolean; catalogError?: string }) {
+export function HomeShopping({ brands, products, models, modelsLoaded, catalogError = "" }: { brands: Brand[]; products: Product[]; models: ProductModel[]; modelsLoaded: boolean; catalogError?: string }) {
   const availableHeroImages = Array.from(new Set([
     ...models.flatMap((model) => [model.image, ...(model.gallery ?? [])]),
     ...products.filter((product) => product.newArrival || product.bestSeller || product.featured).map((product) => product.image),
@@ -184,7 +184,7 @@ export function HomeShopping({ products, models, modelsLoaded, catalogError = ""
     <main className="storefront-main">
       {catalogError ? <p role="alert" className="catalog-refresh-alert">Showing saved catalog information. {catalogError}</p> : null}
       <section className="storefront-hero">
-        <div className="storefront-hero-copy"><span className="shop-eyebrow">VINI RO marketplace</span><h1>Pure water, made easier.</h1><p>Shop dependable RO systems, models, and genuine accessories for everyday homes.</p><Link href="/brands" className="shop-primary-button">Shop products<span aria-hidden="true">→</span></Link><div className="hero-dots" aria-label="Model images">{heroImages.map((image, index) => <button key={`${image}-${index}`} type="button" className={index === heroSlide ? "active" : ""} onClick={() => setHeroSlide(index)} aria-label={`Show model image ${index + 1}`} />)}</div></div>
+        <div className="storefront-hero-copy"><span className="shop-eyebrow">Premium water, thoughtfully delivered</span><h1>Pure water for a more considered home.</h1><p>Discover dependable purification, genuine parts and expert care, with trusted service for every home.</p><div className="storefront-hero-ctas"><Link href="/products" className="shop-primary-button">Shop Now<span aria-hidden="true">→</span></Link><Link href="/brands" className="shop-secondary-button">Explore Products</Link></div><div className="hero-dots" aria-label="Model images">{heroImages.map((image, index) => <button key={`${image}-${index}`} type="button" className={index === heroSlide ? "active" : ""} onClick={() => setHeroSlide(index)} aria-label={`Show model image ${index + 1}`} />)}</div></div>
         <DesktopHeroImage image={activeHeroImage} />
         <HeroModelCarousel slides={heroSlides} />
       </section>
@@ -195,15 +195,15 @@ export function HomeShopping({ products, models, modelsLoaded, catalogError = ""
 
       <section className="shop-section mobile-model-catalog">
         <div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>All models</h2></div></div>
-        {!modelsLoaded ? <ModelsLoading /> : visibleModels.length ? <div className="mobile-model-list">{visibleModels.map((model) => <MobileModelCard key={model.id} model={model} />)}</div> : <p className="models-empty">No models are available right now.</p>}
+        {!modelsLoaded ? <ModelsLoading /> : visibleModels.length ? <div className="mobile-model-list">{visibleModels.map((model) => <MobileModelCard key={model.id} model={model} brands={brands} />)}</div> : <p className="models-empty">No models are available right now.</p>}
       </section>
 
       <div className="desktop-model-showcases" aria-live="polite">
         {!modelsLoaded ? <section className="shop-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>Models</h2></div></div><ModelsLoading /></section> : visibleModels.length ? <>
-          <ModelShowcase title="New arrivals" eyebrow="Fresh to the store" models={modelSection("newArrival")} href="/brands" />
-          <ModelShowcase title="Best sellers" eyebrow="Customer favourites" models={modelSection("bestSeller")} href="/brands" />
-          <ModelShowcase title="Deals & offers" eyebrow="Value for your setup" models={modelSection("deal")} href="/brands" />
-          <ModelShowcase title="Featured models" eyebrow="Picked by VINI RO" models={modelSection("featured")} href="/brands" />
+          <ModelShowcase title="New arrivals" eyebrow="Fresh to the store" models={modelSection("newArrival")} brands={brands} href="/brands" />
+          <ModelShowcase title="Best sellers" eyebrow="Customer favourites" models={modelSection("bestSeller")} brands={brands} href="/brands" />
+          <ModelShowcase title="Deals & offers" eyebrow="Value for your setup" models={modelSection("deal")} brands={brands} href="/brands" />
+          <ModelShowcase title="Featured models" eyebrow="Picked by VINI RO" models={modelSection("featured")} brands={brands} href="/brands" />
         </> : <section className="shop-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>Models</h2></div></div><p className="models-empty">No models are available right now.</p></section>}
       </div>
 

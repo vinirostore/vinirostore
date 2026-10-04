@@ -6,6 +6,7 @@ export function getAuthReturnPath() {
 
   const destination = new URL(requestedPath, window.location.origin);
   const allowed = destination.pathname.startsWith("/services/")
+    || /^\/brands\/[^/]+\/[^/]+\/?$/.test(destination.pathname)
     || ["/cart", "/checkout", "/wishlist"].includes(destination.pathname);
   if (destination.origin !== window.location.origin || !allowed) return "/account";
 

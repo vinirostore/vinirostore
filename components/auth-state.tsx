@@ -23,9 +23,9 @@ type AuthState = {
   isSupabaseAuthenticated: boolean;
   isAdminAuthenticated: boolean;
   user: AccountUser | null;
-  login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string }>;
+  login: (email: string, name?: string, phone?: string, createdAt?: string, password?: string) => Promise<{ error?: string; hasCustomerProfile?: boolean }>;
   requestEmailOtp: (email: string) => Promise<{ error?: string }>;
-  verifyEmailOtp: (email: string, token: string) => Promise<{ error?: string }>;
+  verifyEmailOtp: (email: string, token: string) => Promise<{ error?: string; hasCustomerProfile?: boolean }>;
   verifySignupOtp: (email: string, token: string) => Promise<{ error?: string }>;
   resendSignupOtp: (email: string) => Promise<{ error?: string }>;
   registerAccount: (name: string, email: string, password: string, phone?: string, securityQuestion?: string, securityAnswer?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
@@ -172,6 +172,12 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           phone: normalizeIndianPhone(String(metadata.phone || phone || "")) || undefined,
           createdAt: data.user.created_at || createdAt || new Date().toISOString(),
         };
+        const { data: existingProfile, error: profileLookupError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", nextUser.id!)
+          .maybeSingle();
+        if (profileLookupError) return { error: `Signed in, but your customer account could not be checked: ${profileLookupError.message}` };
         const profileResult = await saveCustomerProfile({
           id: nextUser.id!,
           fullName: nextUser.name,
@@ -184,7 +190,7 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         setIsAuthenticated(true);
         setIsSupabaseAuthenticated(true);
         setIsAdminAuthenticated(false);
-        return {};
+        return { hasCustomerProfile: Boolean(existingProfile) };
       } catch (error) {
         return { error: error instanceof Error && error.message ? error.message : "Failed to sign in. Please try again." };
       }
@@ -226,13 +232,20 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           createdAt: data.user.created_at,
         };
 
+        const { data: existingProfile, error: profileLookupError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", nextUser.id!)
+          .maybeSingle();
+        if (profileLookupError) return { error: `Signed in, but your customer account could not be checked: ${profileLookupError.message}` };
+
         const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
         if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
         setUser(nextUser);
         setIsAuthenticated(true);
         setIsSupabaseAuthenticated(true);
         setIsAdminAuthenticated(false);
-        return {};
+        return { hasCustomerProfile: Boolean(existingProfile) };
       } catch (error) {
         return { error: error instanceof Error ? error.message : "Failed to fetch. Please try again." };
       }

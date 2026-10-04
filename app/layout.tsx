@@ -5,6 +5,7 @@ import { AuthStateProvider } from "@/components/auth-state";
 import { LoadingFeedback } from "@/components/loading-feedback";
 import { BackToTopButton } from "@/components/back-to-top";
 import "./globals.css";
+import "./luxury-theme.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

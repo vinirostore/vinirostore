@@ -20,6 +20,7 @@ export default function AccountPage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isServiceHistoryOpen, setIsServiceHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -112,6 +113,19 @@ export default function AccountPage() {
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
             Manage your RO service requests, preferred plans, and upcoming support details.
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              setIsServiceHistoryOpen(true);
+              document.getElementById("customer-service-history-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            aria-expanded={isServiceHistoryOpen}
+            aria-controls="customer-service-history"
+            className="mt-5 inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold tracking-wide text-white transition"
+          >
+            Open Service History
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -156,11 +170,29 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <div className="mt-8 border-t border-slate-200 pt-8">
+            <div id="customer-service-history-section" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-8">
               <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Service history</h3>
-              <p className="mt-2 text-sm text-slate-600">Your service and AMC bookings, including completed visits, are saved here.</p>
-              {!dataError && serviceRequests.length === 0 ? <p className="mt-4 text-sm text-slate-600">No service history yet.</p> : null}
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-5 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm leading-6 text-slate-600">Your service and AMC bookings, including completed visits, are saved here.</p>
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{serviceRequests.length} {serviceRequests.length === 1 ? "booking" : "bookings"} on record</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsServiceHistoryOpen((open) => !open)}
+                    aria-expanded={isServiceHistoryOpen}
+                    aria-controls="customer-service-history"
+                    className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold tracking-wide text-white transition"
+                  >
+                    {isServiceHistoryOpen ? "Close Service History" : "Open Service History"}
+                    <span aria-hidden="true">{isServiceHistoryOpen ? "−" : "→"}</span>
+                  </button>
+                </div>
+              </div>
+              {isServiceHistoryOpen ? <div id="customer-service-history" className="mt-5 space-y-3">
+                {!dataError && serviceRequests.length === 0 ? <p className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">No service history yet. Your service and AMC bookings will appear here.</p> : null}
+                {dataError ? <p role="alert" className="text-sm text-rose-700">{dataError}</p> : null}
                 {serviceRequests.map((request) => {
                   const statusLabel = request.status === "open"
                     ? "Service booked"
@@ -173,7 +205,7 @@ export default function AccountPage() {
                           : request.status.replace("_", " ");
                   return <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex justify-between gap-4"><div><p className="font-medium text-slate-900">{request.subject}</p><p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{request.request_type === "amc" ? "AMC booking" : request.request_type === "service" ? "Service booking" : "Enquiry"}</p></div><span className="text-sm text-slate-600">{statusLabel}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{request.message}</p><p className="mt-2 text-xs text-slate-500">Booked {new Date(request.created_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}</p>{request.status === "completed" ? <p className="mt-2 text-sm text-emerald-800">Service done{request.completed_by_name ? <> by <span className="font-semibold">{request.completed_by_name}</span></> : null}{request.completed_at ? ` · ${new Date(request.completed_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}</p> : null}{request.qr_value && request.request_type !== "enquiry" ? <div className="mt-4 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row"><ServiceRequestQr value={request.qr_value} /><div><p className="break-all font-mono text-xs text-slate-700">VINI-SVC-{request.id.toUpperCase()}</p>{request.status === "completed" ? <><p className="mt-2 font-semibold text-emerald-700">Service completed</p>{request.completed_by_name ? <p className="mt-1 text-sm text-slate-600">Technician: {request.completed_by_name}</p> : null}</> : request.status === "cancelled" ? <p className="mt-2 font-semibold text-slate-600">Booking cancelled</p> : <p className="mt-2 font-extrabold text-rose-700">DO NOT SCAN BEFORE THE SERVICE IS DONE.</p>}</div></div> : null}</div>;
                 })}
-              </div>
+              </div> : null}
             </div>
           </section>
 

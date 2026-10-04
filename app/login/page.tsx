@@ -7,6 +7,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
 import { getAuthReturnPath } from "@/lib/auth-navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +18,34 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [recoveryQuestion, setRecoveryQuestion] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAccountTypeChoice, setShowAccountTypeChoice] = useState(false);
+
+  async function finishCustomerSignIn(hasCustomerProfile: boolean) {
+    if (hasCustomerProfile) {
+      if (!supabase) {
+        setError("We could not check your service account. Please try again.");
+        return;
+      }
+
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(sessionError.message);
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("Your sign-in session could not be verified.");
+
+      const response = await fetch("/api/service-staff", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const result = await response.json() as { staff?: { status: string } | null; error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not check technician access.");
+      if (result.staff) {
+        setShowAccountTypeChoice(true);
+        return;
+      }
+    }
+
+    router.push(getAuthReturnPath());
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -79,7 +108,7 @@ export default function LoginPage() {
             setError(result.error);
             return;
           }
-          router.push(getAuthReturnPath());
+          await finishCustomerSignIn(Boolean(result.hasCustomerProfile));
           return;
         }
 
@@ -109,7 +138,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(getAuthReturnPath());
+      await finishCustomerSignIn(Boolean(result.hasCustomerProfile));
     } finally {
       setIsSubmitting(false);
     }
@@ -122,6 +151,14 @@ export default function LoginPage() {
         <div className="rounded-[30px] border border-slate-200 bg-white p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Account</p>
           <h1 className="mt-3 text-3xl font-semibold text-slate-900">Login</h1>
+          {showAccountTypeChoice ? <section className="mt-6 space-y-4" aria-labelledby="account-type-title">
+            <div>
+              <h2 id="account-type-title" className="text-xl font-semibold text-slate-900">How would you like to continue?</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">This account has both shopping and technician access. Choose where you want to go.</p>
+            </div>
+            <button type="button" onClick={() => router.push("/service-portal")} className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Sign in as a service technician</button>
+            <button type="button" onClick={() => router.push(getAuthReturnPath())} className="w-full rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700">Continue to shopping account</button>
+          </section> : <>
           {isSubmitting ? <div className="mt-4 overflow-hidden rounded-full bg-slate-200"><div className="h-2.5 w-full animate-pulse rounded-full bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-500" /></div> : null}
           <form onSubmit={handleSubmit} className="mt-6 space-y-5" noValidate>
             <label className="block text-sm font-medium text-slate-700">
@@ -162,6 +199,7 @@ export default function LoginPage() {
             {error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : null}
           </form>
           <p className="mt-5 text-sm text-slate-600">Need an account? <Link href="/register" onClick={(event) => { event.preventDefault(); router.push(`/register?returnTo=${encodeURIComponent(getAuthReturnPath())}`); }} className="font-medium text-sky-700">Create one</Link></p>
+          </>}
         </div>
       </main>
       <SiteFooter />

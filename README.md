@@ -92,7 +92,7 @@ Customer profiles are created when checkout starts, not when an account is regis
 
 Add `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`, and `SHIPROCKET_PICKUP_PINCODE` to the server environment. The admin Shipping page checks courier serviceability and rates, creates the Shiprocket shipment, assigns the selected courier/AWB, and stores the tracking details. Prepaid orders can only be dispatched after their payment status is set to `paid`; COD availability depends on the Shiprocket account and delivery pincode.
 
-For an existing Supabase database, apply all `public.orders` column additions and the `Admins can view all profiles` policy from `supabase/schema.sql` in the Supabase SQL Editor before deploying. These changes add delivery state, package dimensions, and Shiprocket order/shipment/AWB fields; the admin-only profile read supports shipment creation. The checkout requires the customer's delivery state; package weight and dimensions are entered in the admin Shipping page. Customers can view live AWB activity from **Account → Track delivery**; this requires Shiprocket server credentials.
+For an existing Supabase database, apply `supabase/migrations/20261004180000_add_shiprocket_order_columns.sql` and the `Admins can view all profiles` policy from `supabase/schema.sql` in the Supabase SQL Editor before deploying. The migration adds delivery state, package dimensions, Cashfree IDs, and Shiprocket order/shipment/AWB fields, including `orders.shiprocket_awb_code`; the admin-only profile read supports shipment creation. The checkout requires the customer's delivery state; package weight and dimensions are entered in the admin Shipping page. Customers can view live AWB activity from **Account → Track delivery**; this requires Shiprocket server credentials.
 
 ## Model color variants
 
@@ -117,6 +117,10 @@ Customer profiles, orders, service bookings, catalog records, carts, and wishlis
 **Admin → Orders** also reads directly from `public.orders`; the old sample orders have been removed. A successful Cashfree payment moves an order from pending to processing, Shiprocket dispatch changes it to shipped, and an admin can mark a paid processing or shipped order as delivered. The order then moves into the Delivered list. Status lists and counts refresh every 30 seconds.
 
 ## Database setup
+
+### Model reviews
+
+Reviews shown on model pages are stored in Supabase in `public.model_reviews`. Apply `supabase/migrations/20261005100000_add_model_reviews.sql` in the Supabase SQL Editor before enabling customer submissions. It enables public reads and authenticated, row-level-secured create/update access; each signed-in customer can submit one review per model and edit their own review. The browser does not use a service-role key.
 
 ```bash
 npx prisma init
