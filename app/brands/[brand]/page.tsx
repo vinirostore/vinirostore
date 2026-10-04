@@ -5,7 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { BrandBackButton } from "@/components/brand-back-button";
 import { SiteHeader } from "@/components/site-header";
-import { Brand, Product, ProductModel, getBrandListFromStore, getModelListFromStore, getProductsFromStore } from "@/lib/catalog";
+import {
+  Brand,
+  Product,
+  ProductModel,
+  getBrandList,
+  getBrandListFromStore,
+  getModelList,
+  getModelListFromStore,
+  getProductsFromStore,
+  getProductsFromStoreSync,
+} from "@/lib/catalog";
 
 export default function BrandDetailPage() {
   const params = useParams<{ brand: string }>();
@@ -14,10 +24,10 @@ export default function BrandDetailPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogModels, setCatalogModels] = useState<ProductModel[]>([]);
   const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
 
   useEffect(() => {
-    const syncBrand = async () => {
-      const [nextBrands, nextModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]);
+    const applyCatalog = (nextBrands: Brand[], nextModels: ProductModel[], nextProducts: Product[], isFinal = false) => {
       const normalizeBrandRoute = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       let decodedBrandRoute = brandSlug;
       try {
@@ -30,9 +40,22 @@ export default function BrandDetailPage() {
       setBrand(nextBrand);
       setCatalogModels(nextModels);
       setProducts(nextProducts);
-      setHasLoadedCatalog(true);
+      if (nextBrand || isFinal) setHasLoadedCatalog(true);
     };
 
+    const syncBrand = async () => {
+      try {
+        const [nextBrands, nextModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]);
+        applyCatalog(nextBrands, nextModels, nextProducts, true);
+        setCatalogError("");
+      } catch (error) {
+        console.error("Could not refresh the brand model catalog:", error);
+        setCatalogError(error instanceof Error ? error.message : "Could not refresh the brand model catalog.");
+        setHasLoadedCatalog(true);
+      }
+    };
+
+    applyCatalog(getBrandList(), getModelList(), getProductsFromStoreSync());
     void syncBrand();
     const handleCatalogChange = () => { void syncBrand(); };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);
@@ -72,6 +95,7 @@ export default function BrandDetailPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        {catalogError ? <p role="alert" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Showing saved model information. {catalogError}</p> : null}
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Brand</p>

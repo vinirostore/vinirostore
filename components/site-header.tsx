@@ -31,7 +31,7 @@ function CartIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h8.9a2 2 0 0 0 2-1.6L22 8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>;
 }
 
-export function SiteHeader() {
+export function SiteHeader({ compact = false }: { compact?: boolean } = {}) {
   const router = useRouter();
   const { cartCount, wishlist } = useShopState();
   const { isAuthenticated } = useAuthState();
@@ -166,7 +166,7 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="store-header">
+    <header className={`store-header${compact ? " product-store-header" : ""}`}>
       <div className="store-header-main">
         <button type="button" className="store-menu-button" onClick={() => { menuScrollPosition.current = window.scrollY; setIsMenuOpen(true); }} aria-label="Open shopping menu" aria-expanded={isMenuOpen} aria-controls="store-menu-drawer"><span /><span /><span /></button>
         <Link href="/" className="store-logo" aria-label="VINI RO home"><span className="store-logo-image"><Image src="/vini-wordmark.png" alt="VINI RO" fill priority sizes="150px" /></span></Link>

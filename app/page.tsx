@@ -1,24 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { HomeShopping } from "@/app/home-shopping";
-import { Product, getModelListFromStore, getProductsFromStore, ProductModel } from "@/lib/catalog";
+import {
+  defaultModels,
+  products as defaultProducts,
+  getModelList,
+  getModelListFromStore,
+  getProductsFromStore,
+  getProductsFromStoreSync,
+  subscribeToCatalogUpdates,
+} from "@/lib/catalog";
 
 export default function HomePage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [models, setModels] = useState<ProductModel[]>([]);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const products = useSyncExternalStore(subscribeToCatalogUpdates, getProductsFromStoreSync, () => defaultProducts);
+  const models = useSyncExternalStore(subscribeToCatalogUpdates, getModelList, () => defaultModels);
+  const [catalogError, setCatalogError] = useState("");
 
   useEffect(() => {
     const syncProducts = async () => {
       try {
-        const [nextProducts, nextModels] = await Promise.all([getProductsFromStore(), getModelListFromStore()]);
-        setProducts(nextProducts);
-        setModels(nextModels);
-      } finally {
-        setModelsLoaded(true);
+        await Promise.all([getProductsFromStore(), getModelListFromStore()]);
+        setCatalogError("");
+      } catch (error) {
+        console.error("Could not refresh the home catalog:", error);
+        setCatalogError(error instanceof Error ? error.message : "Could not refresh the home catalog.");
       }
     };
     void syncProducts();
@@ -34,7 +42,7 @@ export default function HomePage() {
   return (
     <>
       <SiteHeader />
-      <HomeShopping products={products} models={models} modelsLoaded={modelsLoaded} />
+      <HomeShopping products={products} models={models} modelsLoaded catalogError={catalogError} />
       <SiteFooter />
     </>
   );
