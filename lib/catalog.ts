@@ -281,14 +281,67 @@ export function slugifyModelName(value: string): string {
 }
 
 const catalogMemory = new Map<string, unknown>();
+const catalogFetches = new Map<string, Promise<unknown[] | null>>();
+const catalogStoragePrefix = "vini-ro:catalog:v1:";
+const visibleCatalogSnapshots = new Map<string, { source: unknown; visible: unknown }>();
+let productsSyncSource: Product[] | null = null;
+let productsSyncSnapshot: Product[] = [];
 
-function readCatalogMemory<T>(key: string, fallback: T): T {
-  return (catalogMemory.get(key) as T | undefined) ?? fallback;
+function visibleCatalog<T extends { status?: string }>(key: string, source: T[]): T[] {
+  const cached = visibleCatalogSnapshots.get(key);
+  if (cached?.source === source) return cached.visible as T[];
+  const visible = source.filter((item) => item.status !== "inactive");
+  visibleCatalogSnapshots.set(key, { source, visible });
+  return visible;
 }
 
-function updateCatalogMemory<T>(key: string, value: T) {
+export function subscribeToCatalogUpdates(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("vini-catalog-updated", callback);
+  window.addEventListener("vini-catalog-refreshed", callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener("vini-catalog-updated", callback);
+    window.removeEventListener("vini-catalog-refreshed", callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+
+function readCatalogMemory<T>(key: string, fallback: T): T {
+  if (catalogMemory.has(key)) return catalogMemory.get(key) as T;
+  if (typeof window === "undefined") return fallback;
+
+  const storageKey = `${catalogStoragePrefix}${key}`;
+  try {
+    const cached = window.localStorage.getItem(storageKey);
+    if (cached === null) return fallback;
+    const parsed: unknown = JSON.parse(cached);
+    if (!parsed || typeof parsed !== "object" || !("data" in parsed)) {
+      throw new Error(`Cached catalog entry "${key}" has an invalid format.`);
+    }
+    catalogMemory.set(key, parsed.data);
+    return parsed.data as T;
+  } catch (error) {
+    console.error(`Could not read cached catalog entry "${key}":`, error);
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch (removeError) {
+      console.error(`Could not remove invalid cached catalog entry "${key}":`, removeError);
+    }
+    return fallback;
+  }
+}
+
+function updateCatalogMemory<T>(key: string, value: T, notify = true) {
   catalogMemory.set(key, value);
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("vini-catalog-updated", { detail: { key } }));
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(`${catalogStoragePrefix}${key}`, JSON.stringify({ data: value, cachedAt: Date.now() }));
+    } catch (error) {
+      console.error(`Could not persist catalog entry "${key}" for the next visit:`, error);
+    }
+    window.dispatchEvent(new CustomEvent(notify ? "vini-catalog-updated" : "vini-catalog-refreshed", { detail: { key } }));
+  }
 }
 
 function hasSupabaseConfig() {
@@ -326,29 +379,41 @@ async function deleteSupabaseRows(table: string, ids: string[]) {
 export async function fetchSupabaseCatalog<T>(table: string, columns = "*"): Promise<T[] | null> {
   if (!hasSupabaseConfig()) return null;
 
+  const key = `${table}:${columns}`;
+  const existingRequest = catalogFetches.get(key);
+  if (existingRequest) return existingRequest as Promise<T[] | null>;
+
+  const request = (async () => {
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      if (!supabase) return null;
+      const { data, error } = await supabase.from(table).select(columns);
+      if (error) throw new Error(`Could not load ${table} from Supabase: ${error.message}`);
+      if (!data) throw new Error(`Supabase returned no ${table} data.`);
+      return data as unknown[];
+    } catch (error) {
+      throw error instanceof Error ? error : new Error(`Could not load ${table} from Supabase.`);
+    }
+  })();
+  catalogFetches.set(key, request);
   try {
-    const { supabase } = await import("@/lib/supabase");
-    if (!supabase) return null;
-    const { data, error } = await supabase.from(table).select(columns);
-    if (error) throw new Error(`Could not load ${table} from Supabase: ${error.message}`);
-    if (!data) throw new Error(`Supabase returned no ${table} data.`);
-    return data as T[];
-  } catch (error) {
-    throw error instanceof Error ? error : new Error(`Could not load ${table} from Supabase.`);
+    return await request as T[] | null;
+  } finally {
+    if (catalogFetches.get(key) === request) catalogFetches.delete(key);
   }
 }
 
 export function getBrandList(): Brand[] {
   const saved = readCatalogMemory<Brand[] | null>("vini-brands", null);
   const source = saved === null ? brands : saved;
-  return source.filter((brand) => brand.status !== "inactive");
+  return visibleCatalog("vini-brands-visible", source);
 }
 
 export async function getBrandListFromStore(): Promise<Brand[]> {
   const remote = await fetchSupabaseCatalog<Brand>("brands");
   if (remote !== null) {
     const normalized = remote.map((brand) => ({ ...brand, createdAt: brand.createdAt ?? (brand as Brand & { created_at?: string }).created_at, updatedAt: brand.updatedAt ?? (brand as Brand & { updated_at?: string }).updated_at }));
-    updateCatalogMemory("vini-brands", normalized);
+    updateCatalogMemory("vini-brands", normalized, false);
     return normalized.filter((brand) => brand.status !== "inactive");
   }
   return getBrandList();
@@ -361,7 +426,7 @@ export function getBrandBySlug(slug: string): Brand | undefined {
 export function getModelList(): ProductModel[] {
   const saved = readCatalogMemory<ProductModel[] | null>("vini-models", null);
   const source = saved === null ? defaultModels : saved;
-  return source.filter((model) => model.status !== "inactive");
+  return visibleCatalog("vini-models-visible", source);
 }
 
 export async function getModelListFromStore(): Promise<ProductModel[]> {
@@ -386,7 +451,7 @@ export async function getModelListFromStore(): Promise<ProductModel[]> {
       updatedAt: model.updatedAt ?? row.updated_at,
     };
     });
-    updateCatalogMemory("vini-models", normalized);
+    updateCatalogMemory("vini-models", normalized, false);
     return normalized.filter((model) => model.status !== "inactive");
   }
   return getModelList();
@@ -410,7 +475,7 @@ export async function getModelSearchSuggestionsFromStore(): Promise<Array<Pick<P
 export function getAccessoryList(): Accessory[] {
   const saved = readCatalogMemory<Accessory[] | null>("vini-accessories", null);
   const source = saved === null ? defaultAccessories : saved;
-  return source.filter((item) => item.status !== "inactive");
+  return visibleCatalog("vini-accessories-visible", source);
 }
 
 export async function getAccessoryListFromStore(): Promise<Accessory[]> {
@@ -426,7 +491,7 @@ export async function getAccessoryListFromStore(): Promise<Accessory[]> {
       updatedAt: item.updatedAt ?? row.updated_at,
     };
     });
-    updateCatalogMemory("vini-accessories", normalized);
+    updateCatalogMemory("vini-accessories", normalized, false);
     return normalized.filter((item) => item.status !== "inactive");
   }
   return getAccessoryList();
@@ -505,13 +570,17 @@ export function getBrandModels(brandSlug: string): ProductModel[] {
 
 export function getProductsFromStoreSync(): Product[] {
   const saved = readCatalogMemory<Product[] | null>("vini-products", null);
-  return (saved === null ? products : saved).map((product) => ({
+  const source = saved === null ? products : saved;
+  if (productsSyncSource === source) return productsSyncSnapshot;
+  productsSyncSource = source;
+  productsSyncSnapshot = source.map((product) => ({
     ...product,
     brandId: product.brandId ?? "brand-vini",
     model: product.model ?? product.name,
     modelSlug: product.modelSlug ?? product.slug,
     gallery: product.gallery && product.gallery.length ? product.gallery : [product.image],
   }));
+  return productsSyncSnapshot;
 }
 
 export function getProductsForBrand(brandSlug: string): Product[] {
@@ -763,7 +832,7 @@ export async function getProductsFromStore(): Promise<Product[]> {
       capacity: row.capacity ? String(row.capacity) : undefined,
       warranty: row.warranty ? String(row.warranty) : undefined,
     }));
-  updateCatalogMemory("vini-products", normalized);
+  updateCatalogMemory("vini-products", normalized, false);
   return normalized;
 }
 

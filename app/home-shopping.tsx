@@ -156,7 +156,7 @@ function ModelsLoading() {
   return <div className="models-loading" role="status" aria-live="polite"><span aria-hidden="true" />Loading models...</div>;
 }
 
-export function HomeShopping({ products, models, modelsLoaded }: { products: Product[]; models: ProductModel[]; modelsLoaded: boolean }) {
+export function HomeShopping({ products, models, modelsLoaded, catalogError = "" }: { products: Product[]; models: ProductModel[]; modelsLoaded: boolean; catalogError?: string }) {
   const availableHeroImages = Array.from(new Set([
     ...models.flatMap((model) => [model.image, ...(model.gallery ?? [])]),
     ...products.filter((product) => product.newArrival || product.bestSeller || product.featured).map((product) => product.image),
@@ -182,6 +182,7 @@ export function HomeShopping({ products, models, modelsLoaded }: { products: Pro
 
   return (
     <main className="storefront-main">
+      {catalogError ? <p role="alert" className="catalog-refresh-alert">Showing saved catalog information. {catalogError}</p> : null}
       <section className="storefront-hero">
         <div className="storefront-hero-copy"><span className="shop-eyebrow">VINI RO marketplace</span><h1>Pure water, made easier.</h1><p>Shop dependable RO systems, models, and genuine accessories for everyday homes.</p><Link href="/brands" className="shop-primary-button">Shop products<span aria-hidden="true">→</span></Link><div className="hero-dots" aria-label="Model images">{heroImages.map((image, index) => <button key={`${image}-${index}`} type="button" className={index === heroSlide ? "active" : ""} onClick={() => setHeroSlide(index)} aria-label={`Show model image ${index + 1}`} />)}</div></div>
         <DesktopHeroImage image={activeHeroImage} />

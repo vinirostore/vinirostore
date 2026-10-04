@@ -1,10 +1,11 @@
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ProductCatalog } from "@/app/products/product-catalog";
-import { getBrandListFromStore, getProductsFromStore } from "@/lib/catalog";
+import { getBrandList, getProductsFromStoreSync } from "@/lib/catalog";
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ category?: string; search?: string; sort?: string }> }) {
-  const [brands, products] = await Promise.all([getBrandListFromStore(), getProductsFromStore()]);
+  const brands = getBrandList();
+  const products = getProductsFromStoreSync();
   const filters = await searchParams;
 
   return (

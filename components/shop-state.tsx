@@ -16,7 +16,7 @@ type ShopState = {
   wishlistItems: Product[];
   cartCount: number;
   clearCart: () => void;
-  addToCart: (product: Product) => void;
+  addToCart: (product: Product, quantity?: number) => void;
   removeFromCart: (slug: string) => void;
   updateCartQuantity: (slug: string, quantity: number) => void;
   toggleWishlist: (slug: string, product?: Product) => void;
@@ -167,13 +167,14 @@ export function ShopStateProvider({ children }: { children: React.ReactNode }) {
     cartCount: cart.reduce((total, line) => total + line.quantity, 0),
     persistenceError: visiblePersistenceError,
     clearCart,
-    addToCart: (product) => {
+    addToCart: (product, quantity = 1) => {
+      const quantityToAdd = Number.isFinite(quantity) ? Math.min(99, Math.max(1, Math.floor(quantity))) : 1;
       setCart((current) => {
         const existing = current.find((line) => line.product.slug === product.slug);
         if (existing) {
-          return current.map((line) => line.product.slug === product.slug ? { ...line, quantity: line.quantity + 1 } : line);
+          return current.map((line) => line.product.slug === product.slug ? { ...line, quantity: Math.min(99, line.quantity + quantityToAdd) } : line);
         }
-        return [...current, { product, quantity: 1 }];
+        return [...current, { product, quantity: quantityToAdd }];
       });
       setNotice({ title: "Added to cart", detail: product.name, tone: "cart" });
       window.setTimeout(() => setNotice(null), 4000);

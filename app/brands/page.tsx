@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { Brand, getBrandListFromStore } from "@/lib/catalog";
+import { brands as defaultBrands, getBrandList, getBrandListFromStore, subscribeToCatalogUpdates } from "@/lib/catalog";
 
 export default function BrandsPage() {
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [hasLoadedBrands, setHasLoadedBrands] = useState(false);
+  const brands = useSyncExternalStore(subscribeToCatalogUpdates, getBrandList, () => defaultBrands);
+  const [catalogError, setCatalogError] = useState("");
 
   useEffect(() => {
     const syncBrands = async () => {
-      setBrands(await getBrandListFromStore());
-      setHasLoadedBrands(true);
+      try {
+        await getBrandListFromStore();
+        setCatalogError("");
+      } catch (error) {
+        console.error("Could not refresh the brand catalog:", error);
+        setCatalogError(error instanceof Error ? error.message : "Could not refresh the brand catalog.");
+      }
     };
     void syncBrands();
 
@@ -35,7 +40,8 @@ export default function BrandsPage() {
           <p className="max-w-2xl text-sm leading-7 text-slate-600">Browse trusted RO brands, compare model families, and pick the perfect purification system for your home or business.</p>
         </div>
 
-        {hasLoadedBrands ? <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        {catalogError ? <p role="alert" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Showing saved brand information. {catalogError}</p> : null}
+        {brands.length ? <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           {brands.map((brand) => {
             return (
               <div key={brand.id} className="flex aspect-square min-h-0 flex-col rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -53,7 +59,7 @@ export default function BrandsPage() {
               </div>
             );
           })}
-        </div> : <p className="text-sm text-slate-500">Loading brands...</p>}
+        </div> : catalogError ? <p className="text-sm text-slate-600">No saved brands are available offline. Please try again when the catalog connection is restored.</p> : <p className="text-sm text-slate-500">Loading brands...</p>}
       </main>
       <SiteFooter />
     </>
