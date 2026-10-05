@@ -4,6 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Brand, Product, ProductModel } from "@/lib/catalog";
+import accessoriesImage from "../accessories.png";
+import amcImage from "../amc.png";
 
 function ModelCard({ model, brands }: { model: ProductModel; brands: Brand[] }) {
   const brandSlug = brands.find((brand) => brand.id === model.brandId)?.slug ?? model.brandId;
@@ -43,13 +45,6 @@ function MobileModelCard({ model, brands }: { model: ProductModel; brands: Brand
     </div>
   </Link>;
 }
-
-const categoryMeta = [
-  { slug: "ro", label: "RO Purifiers", detail: "Complete water systems", image: "/RO1.jpeg" },
-  { slug: "accessories", label: "RO Accessories", detail: "Parts that fit", image: "/RO6.jpeg" },
-  { slug: "combo-offers", label: "Combo Offers", detail: "Smarter bundles", image: "/RO3.jpeg" },
-  { slug: "amc", label: "AMC & Services", detail: "Care when needed", image: "/RO8.jpeg" },
-];
 
 const brandLogos = [
   { name: "AQUA MARS", file: "AQUA MARS LOGO.jpeg" },
@@ -169,7 +164,6 @@ export function HomeShopping({ brands, products, models, modelsLoaded, catalogEr
   }, [heroImages.length]);
 
   const activeHeroImage = heroImages[heroSlide % heroImages.length];
-  const visibleProducts = products.filter((product) => product.status !== "inactive");
   const visibleModels = models.filter((model) => model.status !== "inactive");
   const modelSection = (flag: "newArrival" | "bestSeller" | "deal" | "featured") => {
     const flagged = visibleModels.filter((model) => model[flag]);
@@ -178,8 +172,6 @@ export function HomeShopping({ brands, products, models, modelsLoaded, catalogEr
   const modelHeroSlides = interleaveModelsByBrand(visibleModels.filter((model) => model.image)).map((model) => ({ id: model.id, name: model.name, image: model.image }));
   const fallbackHeroSlides = heroImages.map((image, index) => ({ id: `fallback-${index}`, name: "Quality water care", image }));
   const heroSlides = modelsLoaded && modelHeroSlides.length ? modelHeroSlides : fallbackHeroSlides;
-  const categories = categoryMeta.filter((category) => category.slug === "amc" || visibleProducts.some((product) => product.category === category.slug));
-
   return (
     <main className="storefront-main">
       {catalogError ? <p role="alert" className="catalog-refresh-alert">Showing saved catalog information. {catalogError}</p> : null}
@@ -191,7 +183,39 @@ export function HomeShopping({ brands, products, models, modelsLoaded, catalogEr
 
       <BrandLogoMarquee />
 
-      <section className="shop-section category-section"><div className="shop-section-heading"><div><span className="shop-eyebrow">Start exploring</span><h2>Shop by category</h2></div></div><div className="category-rail">{categories.map((category) => <Link key={category.slug} href={category.slug === "amc" ? "/services" : category.slug === "accessories" ? "/accessories" : category.slug === "combo-offers" ? "/brands" : `/products?category=${category.slug}`} className="category-card"><img src={category.image} alt="" /><span>{category.label}</span><small>{category.detail}</small><b aria-hidden="true">→</b></Link>)}</div></section>
+      <section className="shop-section category-section">
+        <div className="shop-section-heading">
+          <div><span className="shop-eyebrow">Start exploring</span><h2>Shop by category</h2></div>
+        </div>
+        <div className="premium-category-rail" aria-label="Shop by category">
+          <Link href="/services" className="premium-category-card premium-category-card-warm">
+            <div className="premium-category-copy">
+              <span className="premium-category-eyebrow">Care that lasts</span>
+              <h3>AMC &amp;<br />Services</h3>
+              <p>Professional care for your RO, whenever you need it.</p>
+              <span className="premium-category-price">AMC starting at ₹2,900/-</span>
+              <span className="premium-category-link">Explore Services <span aria-hidden="true">→</span></span>
+            </div>
+            <div className="premium-category-art premium-category-art-warm">
+              <Image src={amcImage} alt="Premium RO purifier with AMC service essentials" fill sizes="(max-width: 640px) 78vw, (max-width: 1100px) 44vw, 34vw" />
+            </div>
+            <span className="premium-category-detail premium-category-detail-warm" aria-hidden="true">CARE · TRUST · SUPPORT</span>
+          </Link>
+
+          <Link href="/accessories" className="premium-category-card premium-category-card-cool">
+            <div className="premium-category-copy">
+              <span className="premium-category-eyebrow">Complete your RO</span>
+              <h3>RO<br />Accessories</h3>
+              <p>Quality components for better purification.</p>
+              <span className="premium-category-link">Explore Accessories <span aria-hidden="true">→</span></span>
+            </div>
+            <div className="premium-category-art premium-category-art-cool">
+              <Image src={accessoriesImage} alt="RO membrane, filters, UV components and tap" fill sizes="(max-width: 640px) 78vw, (max-width: 1100px) 44vw, 34vw" />
+            </div>
+            <span className="premium-category-detail premium-category-detail-cool" aria-hidden="true">QUALITY · FIT · PERFORMANCE</span>
+          </Link>
+        </div>
+      </section>
 
       <section className="shop-section mobile-model-catalog">
         <div className="shop-section-heading"><div><span className="shop-eyebrow">Browse the range</span><h2>All models</h2></div></div>
