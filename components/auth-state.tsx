@@ -90,13 +90,15 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
         const sessionUser = data.session?.user;
         if (!sessionUser) {
           setUser(null);
           setIsAuthenticated(false);
           setIsSupabaseAuthenticated(false);
           setIsAdminAuthenticated(false);
+          setIsAuthReady(true);
           return;
         }
 
@@ -124,21 +126,49 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
         } else {
           setIsAdminAuthenticated(false);
         }
-      } catch {
+        setIsAuthReady(true);
+      } catch (error) {
+        console.error("Could not restore the Supabase session:", error);
         setIsSupabaseAuthenticated(false);
         setIsAdminAuthenticated(false);
-      } finally {
-        setIsAuthReady(true);
       }
     };
 
     void applySupabaseSession();
     const authSubscription = supabase
-      ? supabase.auth.onAuthStateChange((event) => {
+      ? supabase.auth.onAuthStateChange((event, session) => {
           if (event === "SIGNED_OUT") {
+            setUser(null);
+            setIsAuthenticated(false);
+            setIsSupabaseAuthenticated(false);
+            setIsAdminAuthenticated(false);
+            setIsAuthReady(true);
+            return;
+          }
+
+          if (session?.user) {
+            const sessionUser = session.user;
+            const metadata = sessionUser.user_metadata || {};
+            setUser({
+              id: sessionUser.id,
+              name: String(metadata.name || "Customer"),
+              email: normalizeEmail(sessionUser.email || ""),
+              phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
+              createdAt: sessionUser.created_at,
+            });
+            setIsAuthenticated(true);
+            setIsSupabaseAuthenticated(true);
+            if (normalizeEmail(sessionUser.email || "") !== ADMIN_EMAIL) {
+              setIsAdminAuthenticated(false);
+            }
+          } else if (event === "INITIAL_SESSION") {
+            setUser(null);
+            setIsAuthenticated(false);
             setIsSupabaseAuthenticated(false);
             setIsAdminAuthenticated(false);
           }
+
+          if (event === "INITIAL_SESSION") setIsAuthReady(true);
         }).data.subscription
       : null;
 
@@ -178,13 +208,15 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           .eq("id", nextUser.id!)
           .maybeSingle();
         if (profileLookupError) return { error: `Signed in, but your customer account could not be checked: ${profileLookupError.message}` };
-        const profileResult = await saveCustomerProfile({
-          id: nextUser.id!,
-          fullName: nextUser.name,
-          email: nextUser.email,
-          phone: nextUser.phone,
-        });
-        if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
+        if (!existingProfile) {
+          const profileResult = await saveCustomerProfile({
+            id: nextUser.id!,
+            fullName: nextUser.name,
+            email: nextUser.email,
+            phone: nextUser.phone,
+          });
+          if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
+        }
 
         setUser(nextUser);
         setIsAuthenticated(true);
@@ -239,8 +271,10 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           .maybeSingle();
         if (profileLookupError) return { error: `Signed in, but your customer account could not be checked: ${profileLookupError.message}` };
 
-        const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
-        if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
+        if (!existingProfile) {
+          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+          if (profileResult.error) return { error: `Signed in, but your profile could not be synced to Supabase: ${profileResult.error}` };
+        }
         setUser(nextUser);
         setIsAuthenticated(true);
         setIsSupabaseAuthenticated(true);
@@ -269,8 +303,16 @@ export function AuthStateProvider({ children }: { children: React.ReactNode }) {
           phone: normalizeIndianPhone(String(metadata.phone || "")) || undefined,
           createdAt: data.user.created_at,
         };
-        const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
-        if (profileResult.error) return { error: `Account verified, but your profile could not be saved to Supabase: ${profileResult.error}` };
+        const { data: existingProfile, error: profileLookupError } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", nextUser.id!)
+          .maybeSingle();
+        if (profileLookupError) return { error: `Account verified, but your customer profile could not be checked: ${profileLookupError.message}` };
+        if (!existingProfile) {
+          const profileResult = await saveCustomerProfile({ id: nextUser.id!, fullName: nextUser.name, email: nextUser.email, phone: nextUser.phone });
+          if (profileResult.error) return { error: `Account verified, but your profile could not be saved to Supabase: ${profileResult.error}` };
+        }
         setUser(nextUser);
         setIsAuthenticated(true);
         setIsSupabaseAuthenticated(true);

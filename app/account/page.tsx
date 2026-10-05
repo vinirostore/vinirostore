@@ -7,7 +7,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { businessConfig } from "@/lib/site-config";
 import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
-import { getCustomerAccount, saveCustomerProfile, type CustomerOrder, type CustomerProfile, type CustomerServiceRequest } from "@/lib/customer-data";
+import { getCustomerAccount, saveCustomerAddresses, saveCustomerProfile, type CustomerAddress, type CustomerOrder, type CustomerProfile, type CustomerServiceRequest } from "@/lib/customer-data";
 import { ServiceRequestQr } from "@/components/service-request-qr";
 import { useShopState } from "@/components/shop-state";
 
@@ -23,14 +23,6 @@ const navItems: NavItem[] = [
   { id: "security", label: "Security", href: "#security" },
   { id: "support", label: "Help & Support", href: "#support" },
 ];
-
-const quickActions = [
-  { title: "My Orders", subtitle: "Track and manage your purchases", href: "#orders", icon: "orders" },
-  { title: "Wishlist", subtitle: "Your saved products", href: "#wishlist", icon: "wishlist" },
-  { title: "Addresses", subtitle: "Manage delivery addresses", href: "#addresses", icon: "address" },
-  { title: "Profile", subtitle: "Personal information", href: "#profile", icon: "profile" },
-  { title: "Help & Support", subtitle: "Get assistance", href: "#support", icon: "support" },
-] as const;
 
 const serviceCards = [
   { title: "Repair", body: "Quick RO repair requests", price: "From ₹1,200" },
@@ -70,80 +62,31 @@ function getOrderStatusTone(status: string) {
   return { label: status || "Processing", className: "border border-slate-200 bg-slate-50 text-slate-700" };
 }
 
-function QuickActionIcon({ name }: { name: string }) {
-  const shareProps = {
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.7,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    className: "h-5 w-5",
-    "aria-hidden": true,
-  };
-
-  if (name === "orders") {
-    return (
-      <svg {...shareProps}>
-        <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" />
-        <path d="M8 9h8M8 12h8M8 15h5" />
-      </svg>
-    );
-  }
-
-  if (name === "wishlist") {
-    return (
-      <svg {...shareProps}>
-        <path d="M12 20.5s-7-4.35-7-10.25A4.25 4.25 0 0 1 9.25 6c1.05 0 2.13.44 2.75 1.2A3.85 3.85 0 0 1 14.75 6 4.25 4.25 0 0 1 19 10.25C19 16.15 12 20.5 12 20.5Z" />
-      </svg>
-    );
-  }
-
-  if (name === "address") {
-    return (
-      <svg {...shareProps}>
-        <path d="M12 21s6-5.06 6-11.3A6 6 0 0 0 6 9.7C6 15.94 12 21 12 21Z" />
-        <circle cx="12" cy="9.5" r="2.5" />
-      </svg>
-    );
-  }
-
-  if (name === "profile") {
-    return (
-      <svg {...shareProps}>
-        <circle cx="12" cy="8" r="3.5" />
-        <path d="M5 19c1.3-2.8 4.2-4 7-4s5.7 1.2 7 4" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg {...shareProps}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M9.5 9.5h5M9.5 12h5M9.5 14.5h3.5" />
-    </svg>
-  );
-}
-
 export default function AccountPage() {
   const router = useRouter();
-  const { isAuthenticated, isAdminAuthenticated, logout, user, changePassword } = useAuthState();
-  const { wishlistItems } = useShopState();
+  const { isAuthenticated, isAuthReady, isAdminAuthenticated, logout, user, changePassword } = useAuthState();
+  const { wishlistItems, toggleWishlist, addToCart } = useShopState();
   const [activeSection, setActiveSection] = useState("overview");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [serviceRequests, setServiceRequests] = useState<CustomerServiceRequest[]>([]);
   const [dataError, setDataError] = useState("");
+  const [profileSaveError, setProfileSaveError] = useState("");
+  const [addressSaveError, setAddressSaveError] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isServiceHistoryOpen, setIsServiceHistoryOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState({ name: user?.name || "", email: user?.email || "", phone: user?.phone || "" });
   const [addressDraft, setAddressDraft] = useState<AddressDraft>({ label: "Home", name: "", line1: "", city: "", state: "", pincode: "", phone: "" });
 
   useEffect(() => {
+    if (!isAuthReady) return;
     if (!isAuthenticated) {
       router.replace("/login");
       return;
@@ -152,7 +95,7 @@ export default function AccountPage() {
     if (user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() || isAdminAuthenticated) {
       router.replace("/admin");
     }
-  }, [isAuthenticated, isAdminAuthenticated, router, user]);
+  }, [isAuthReady, isAuthenticated, isAdminAuthenticated, router, user]);
 
   useEffect(() => {
     const accountUserId = user?.id ?? "";
@@ -184,7 +127,7 @@ export default function AccountPage() {
 
   const initials = getInitials(profile.name);
 
-  if (!isAuthenticated || !user) return null;
+  if (!isAuthReady || !isAuthenticated || !user) return null;
   const userId = user.id ?? "";
   if (!userId) return null;
   if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return null;
@@ -196,6 +139,7 @@ export default function AccountPage() {
   }
 
   function openProfileEditor() {
+    setProfileSaveError("");
     setProfileDraft({
       name: profile.name,
       email: profile.email,
@@ -205,6 +149,8 @@ export default function AccountPage() {
   }
 
   function openAddressEditor() {
+    setAddressSaveError("");
+    setEditingAddressId(null);
     setAddressDraft({
       label: "Home",
       name: profile.name,
@@ -217,50 +163,89 @@ export default function AccountPage() {
     setIsAddressModalOpen(true);
   }
 
+  function openAddressForEdit(address: CustomerAddress) {
+    setAddressSaveError("");
+    setEditingAddressId(address.id);
+    setAddressDraft({
+      label: address.label || "Home",
+      name: address.name || profile.name,
+      line1: address.line1,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      phone: address.phone || profile.phone,
+    });
+    setIsAddressModalOpen(true);
+  }
+
   async function handleProfileSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setProfileSaveError("");
     const nextProfile = {
       id: userId,
       fullName: profileDraft.name.trim(),
       email: profileDraft.email.trim(),
       phone: profileDraft.phone.trim(),
     };
-    if (!nextProfile.fullName || !nextProfile.email) return;
-    const result = await saveCustomerProfile(nextProfile);
-    if (!result.error) {
-      setCustomerProfile((current) => ({
-        ...(current ?? {
-          full_name: "",
-          email: "",
-          phone: null,
-          security_question: null,
-          security_answer_hash: null,
-          addresses: [],
-          notification_preferences: { serviceUpdates: true, promos: true, orderStatus: true },
-          payment_preferences: { method: "cashfree" },
-          created_at: new Date().toISOString(),
-        }),
-        full_name: nextProfile.fullName,
-        email: nextProfile.email,
-        phone: nextProfile.phone || null,
-      }));
-      setIsProfileModalOpen(false);
+    if (!nextProfile.fullName || !nextProfile.email) {
+      setProfileSaveError("Name and email are required.");
+      return;
     }
+    setIsSavingProfile(true);
+    const result = await saveCustomerProfile(nextProfile);
+    setIsSavingProfile(false);
+    if (result.error) {
+      setProfileSaveError(result.error);
+      return;
+    }
+    setCustomerProfile((current) => ({
+      ...(current ?? {
+        full_name: "",
+        email: "",
+        phone: null,
+        security_question: null,
+        security_answer_hash: null,
+        addresses: [],
+        notification_preferences: { serviceUpdates: true, promos: true, orderStatus: true },
+        payment_preferences: { method: "cashfree" },
+        created_at: new Date().toISOString(),
+      }),
+      full_name: nextProfile.fullName,
+      email: nextProfile.email,
+      phone: nextProfile.phone || null,
+    }));
+    setIsProfileModalOpen(false);
   }
 
   async function handleAddressSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!addressDraft.name.trim() || !addressDraft.line1.trim() || !addressDraft.city.trim() || !addressDraft.pincode.trim()) return;
+    setAddressSaveError("");
+    if (!addressDraft.name.trim() || !addressDraft.line1.trim() || !addressDraft.city.trim() || !addressDraft.pincode.trim()) {
+      setAddressSaveError("Name, address, city, and PIN code are required.");
+      return;
+    }
+    const currentAddresses = customerProfile?.addresses ?? [];
     const nextAddress = {
-      id: `local-${Date.now()}`,
-      label: addressDraft.label || "Home",
-      line1: addressDraft.line1,
-      city: addressDraft.city,
-      state: addressDraft.state || "Gujarat",
-      pincode: addressDraft.pincode,
-      phone: addressDraft.phone || profile.phone,
-      isDefault: profile.addresses.length === 0,
+      id: editingAddressId || `local-${Date.now()}`,
+      label: addressDraft.label.trim() || "Home",
+      name: addressDraft.name.trim(),
+      line1: addressDraft.line1.trim(),
+      city: addressDraft.city.trim(),
+      state: addressDraft.state.trim() || "Gujarat",
+      pincode: addressDraft.pincode.trim(),
+      phone: addressDraft.phone.trim() || profile.phone,
+      isDefault: currentAddresses.length === 0 || Boolean(currentAddresses.find((address) => address.id === editingAddressId)?.isDefault),
     };
+    const nextAddresses = editingAddressId
+      ? currentAddresses.map((address) => address.id === editingAddressId ? nextAddress : address)
+      : [...currentAddresses, nextAddress];
+    setIsSavingAddress(true);
+    const result = await saveCustomerAddresses(userId, nextAddresses);
+    setIsSavingAddress(false);
+    if (result.error) {
+      setAddressSaveError(result.error);
+      return;
+    }
     setCustomerProfile((current) => ({
       ...(current ?? {
         full_name: profile.name,
@@ -273,12 +258,26 @@ export default function AccountPage() {
         payment_preferences: { method: "cashfree" },
         created_at: new Date().toISOString(),
       }),
-      addresses: [...(current?.addresses ?? []), nextAddress],
+      addresses: nextAddresses,
     }));
     setAddressDraft({ label: "Home", name: "", line1: "", city: "", state: "", pincode: "", phone: "" });
+    setEditingAddressId(null);
     setIsAddressModalOpen(false);
   }
 
+  async function handleAddressRemove(addressId: string) {
+    setAddressSaveError("");
+    const nextAddresses = (customerProfile?.addresses ?? []).filter((address) => address.id !== addressId);
+    if (nextAddresses.length > 0 && !nextAddresses.some((address) => address.isDefault)) {
+      nextAddresses[0] = { ...nextAddresses[0], isDefault: true };
+    }
+    const result = await saveCustomerAddresses(userId, nextAddresses);
+    if (result.error) {
+      setAddressSaveError(result.error);
+      return;
+    }
+    setCustomerProfile((current) => current ? { ...current, addresses: nextAddresses } : current);
+  }
   async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPasswordMessage("");
@@ -342,22 +341,7 @@ export default function AccountPage() {
             </div>
           </header>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {quickActions.map((item) => (
-              <Link key={item.title} href={item.href} className="group rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.02)] transition duration-200 hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-[0_12px_30px_rgba(14,116,144,0.06)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
-                    <QuickActionIcon name={item.icon} />
-                  </div>
-                  <span aria-hidden="true" className="text-lg text-slate-400 transition group-hover:text-sky-700">→</span>
-                </div>
-                <h2 className="mt-4 text-base font-semibold text-slate-900">{item.title}</h2>
-                <p className="mt-1 text-sm text-slate-600">{item.subtitle}</p>
-              </Link>
-            ))}
-          </div>
-
-          <div className="mt-8 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <div className="mt-6 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
             <aside className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.03)] lg:sticky lg:top-20 lg:h-fit">
               <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Account Overview</p>
               <nav className="mt-4 space-y-1">
@@ -382,7 +366,7 @@ export default function AccountPage() {
             </aside>
 
             <div className="space-y-6">
-              <section id="overview" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
+              <section id="overview" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Account overview</p>
@@ -409,7 +393,7 @@ export default function AccountPage() {
                 </div>
               </section>
 
-              <section id="orders" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
+              <section id="orders" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">My Orders</p>
@@ -482,7 +466,7 @@ export default function AccountPage() {
                 ) : null}
               </section>
 
-              <section id="wishlist" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
+              <section id="wishlist" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">My Wishlist</p>
@@ -515,7 +499,7 @@ export default function AccountPage() {
                             <p className="text-sm font-semibold text-slate-900">{product.name}</p>
                             <p className="mt-1 text-xs text-slate-500">★★★★★ 4.8</p>
                           </div>
-                          <button type="button" className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500" aria-label={`Remove ${product.name} from wishlist`}>
+                          <button type="button" onClick={() => toggleWishlist(product.slug, product)} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500" aria-label={`Remove ${product.name} from wishlist`}>
                             ♥
                           </button>
                         </div>
@@ -526,14 +510,14 @@ export default function AccountPage() {
                           </div>
                           <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">In stock</span>
                         </div>
-                        <button type="button" className="mt-4 inline-flex min-h-[42px] w-full items-center justify-center rounded-xl bg-sky-700 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-sky-800">Add to Cart</button>
+                        <button type="button" onClick={() => addToCart(product)} className="mt-4 inline-flex min-h-[42px] w-full items-center justify-center rounded-xl bg-sky-700 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-sky-800">Add to Cart</button>
                       </div>
                     ))}
                   </div>
                 )}
               </section>
 
-              <section id="profile" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
+              <section id="profile" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Profile</p>
@@ -558,7 +542,7 @@ export default function AccountPage() {
                 </div>
               </section>
 
-              <section id="addresses" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
+              <section id="addresses" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Delivery</p>
@@ -568,6 +552,8 @@ export default function AccountPage() {
                     + Add New Address
                   </button>
                 </div>
+
+                {addressSaveError && !isAddressModalOpen ? <p className="mt-4 text-sm text-rose-700" role="alert">{addressSaveError}</p> : null}
 
                 {profile.addresses.length === 0 ? (
                   <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
@@ -584,11 +570,11 @@ export default function AccountPage() {
                             {address.isDefault ? <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Default</span> : null}
                           </div>
                           <div className="flex gap-2 text-sm">
-                            <button type="button" className="font-medium text-sky-700">Edit</button>
-                            <button type="button" className="font-medium text-slate-500">Remove</button>
+                            <button type="button" onClick={() => openAddressForEdit(address)} className="font-medium text-sky-700">Edit</button>
+                            <button type="button" onClick={() => void handleAddressRemove(address.id)} className="font-medium text-slate-500">Remove</button>
                           </div>
                         </div>
-                        <p className="mt-4 text-sm font-semibold text-slate-900">{profile.name}</p>
+                        <p className="mt-4 text-sm font-semibold text-slate-900">{address.name || profile.name}</p>
                         <p className="mt-2 text-sm text-slate-600">{address.line1 || "Address not available"}</p>
                         <p className="mt-1 text-sm text-slate-600">{address.city || "City"}, {address.state || "State"}</p>
                         <p className="mt-1 text-sm text-slate-600">PIN {address.pincode || "000000"}</p>
@@ -662,7 +648,7 @@ export default function AccountPage() {
                 </div>
               </section>
 
-              <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
+              <section id="services" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.03)] sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">RO Services</p>
@@ -751,15 +737,17 @@ export default function AccountPage() {
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
-                <input type="email" value={profileDraft.email} onChange={(event) => setProfileDraft((current) => ({ ...current, email: event.target.value }))} className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                <input type="email" value={profileDraft.email} readOnly aria-describedby="profile-email-note" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600 outline-none" />
+                <p id="profile-email-note" className="mt-1 text-xs text-slate-500">Email is managed by your sign-in account.</p>
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">Phone</label>
                 <input value={profileDraft.phone} onChange={(event) => setProfileDraft((current) => ({ ...current, phone: event.target.value }))} className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
               </div>
+              {profileSaveError ? <p className="text-sm text-rose-700" role="alert">{profileSaveError}</p> : null}
               <div className="flex flex-wrap justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setIsProfileModalOpen(false)} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700">Cancel</button>
-                <button type="submit" className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-medium text-white">Save changes</button>
+                <button type="submit" disabled={isSavingProfile} className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60">{isSavingProfile ? "Saving..." : "Save changes"}</button>
               </div>
             </form>
           </div>
@@ -767,52 +755,55 @@ export default function AccountPage() {
       ) : null}
 
       {isAddressModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.18)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-2 sm:p-4">
+          <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.18)] sm:max-h-[calc(100dvh-2rem)]">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Delivery</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">Add new address</h3>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">{editingAddressId ? "Edit address" : "Add new address"}</h3>
               </div>
-              <button type="button" onClick={() => setIsAddressModalOpen(false)} className="text-slate-500">✕</button>
+              <button type="button" onClick={() => setIsAddressModalOpen(false)} aria-label="Close address form" className="text-slate-500">✕</button>
             </div>
 
-            <form onSubmit={handleAddressSave} className="mt-5 space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Address label</label>
-                <input value={addressDraft.label} onChange={(event) => setAddressDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Home" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Full name</label>
-                <input value={addressDraft.name} onChange={(event) => setAddressDraft((current) => ({ ...current, name: event.target.value }))} placeholder={profile.name} className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Address line</label>
-                <input value={addressDraft.line1} onChange={(event) => setAddressDraft((current) => ({ ...current, line1: event.target.value }))} placeholder="Plot no., street, landmark" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={handleAddressSave} className="mt-5 flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">City</label>
-                  <input value={addressDraft.city} onChange={(event) => setAddressDraft((current) => ({ ...current, city: event.target.value }))} placeholder="Ahmedabad" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Address label</label>
+                  <input value={addressDraft.label} onChange={(event) => setAddressDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Home" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">State</label>
-                  <input value={addressDraft.state} onChange={(event) => setAddressDraft((current) => ({ ...current, state: event.target.value }))} placeholder="Gujarat" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Pin code</label>
-                  <input value={addressDraft.pincode} onChange={(event) => setAddressDraft((current) => ({ ...current, pincode: event.target.value }))} placeholder="380001" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Full name</label>
+                  <input required value={addressDraft.name} onChange={(event) => setAddressDraft((current) => ({ ...current, name: event.target.value }))} placeholder={profile.name} className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Phone</label>
-                  <input value={addressDraft.phone} onChange={(event) => setAddressDraft((current) => ({ ...current, phone: event.target.value }))} placeholder={profile.phone} className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Address line</label>
+                  <input required value={addressDraft.line1} onChange={(event) => setAddressDraft((current) => ({ ...current, line1: event.target.value }))} placeholder="Plot no., street, landmark" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
                 </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">City</label>
+                    <input required value={addressDraft.city} onChange={(event) => setAddressDraft((current) => ({ ...current, city: event.target.value }))} placeholder="Ahmedabad" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">State</label>
+                    <input value={addressDraft.state} onChange={(event) => setAddressDraft((current) => ({ ...current, state: event.target.value }))} placeholder="Gujarat" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">Pin code</label>
+                    <input required value={addressDraft.pincode} onChange={(event) => setAddressDraft((current) => ({ ...current, pincode: event.target.value }))} placeholder="380001" className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">Phone</label>
+                    <input value={addressDraft.phone} onChange={(event) => setAddressDraft((current) => ({ ...current, phone: event.target.value }))} placeholder={profile.phone} className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300" />
+                  </div>
+                </div>
+                {addressSaveError ? <p className="text-sm text-rose-700" role="alert">{addressSaveError}</p> : null}
               </div>
-              <div className="flex flex-wrap justify-end gap-3 pt-2">
+              <div className="-mx-5 -mb-5 mt-4 flex shrink-0 flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-5 py-4">
                 <button type="button" onClick={() => setIsAddressModalOpen(false)} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700">Cancel</button>
-                <button type="submit" className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-medium text-white">Save address</button>
+                <button type="submit" disabled={isSavingAddress} className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60">{isSavingAddress ? "Saving..." : "Save address"}</button>
               </div>
             </form>
           </div>
