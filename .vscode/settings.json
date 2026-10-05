@@ -3,6 +3,10 @@
         "/^npx tsc --noEmit$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^cd \"D:\\\\Desktop\\\\VINI - Copy \\(3\\)\\\\vini-ro-main\" ; npx eslint app/account/page\\.tsx$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }
