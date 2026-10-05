@@ -1870,6 +1870,130 @@ main.product-detail-page .product-trust-intro h2 { margin-top: 8px; font-size: 1
   cursor: pointer;
 }
 
+.bottom-navigation {
+  position: fixed;
+  z-index: 40;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  padding: 5px 8px env(safe-area-inset-bottom);
+  border-top: 1px solid rgba(20, 61, 79, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 -8px 24px rgba(23, 48, 59, 0.08);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.bottom-navigation-inner {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: min(100%, 680px);
+  min-height: 58px;
+  margin: 0 auto;
+}
+
+.bottom-navigation-link {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  color: #78858b;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 200ms ease, background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.bottom-navigation-link:active {
+  background: #f1f7f9;
+}
+
+.bottom-navigation-item {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border-radius: 14px;
+}
+
+.bottom-navigation-icon {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.bottom-navigation-label {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 0.64rem;
+  font-weight: 550;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bottom-navigation-link.is-active {
+  color: #08799f;
+}
+
+.bottom-navigation-link.is-active .bottom-navigation-item {
+  background: #edf7fa;
+  box-shadow: inset 0 0 0 1px rgba(8, 121, 159, 0.06), 0 3px 10px rgba(8, 121, 159, 0.06);
+}
+
+.bottom-navigation-link.is-active .bottom-navigation-icon {
+  stroke-width: 2.1;
+}
+
+.bottom-navigation-link.is-active .bottom-navigation-label {
+  font-weight: 700;
+}
+
+@media (max-width: 1023px) {
+  body:has(.bottom-navigation) {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  }
+
+  .back-to-top {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+}
+
+@media (min-width: 1024px) {
+  .bottom-navigation {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .bottom-navigation {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .bottom-navigation-item {
+    padding-right: 3px;
+    padding-left: 3px;
+  }
+
+  .bottom-navigation-label {
+    font-size: 0.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-navigation-link {
+    transition: none;
+  }
+}
+
 @media (max-width: 1024px) {
   .luxury-hero-inner,
   .split-panel,
@@ -4049,7 +4173,7 @@ button[data-loading="true"]::after {
   .product-trust-grid { gap: 17px 13px; }
   .product-trust-grid strong { font-size: .65rem; }
   .product-trust-grid p { font-size: .6rem; }
-  .product-mobile-purchase { position: fixed; right: 0; bottom: 0; left: 0; z-index: 900; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 15px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #e0e7e2; background: rgba(255,255,255,.96); box-shadow: 0 -5px 24px rgba(30,50,53,.08); backdrop-filter: blur(12px); }
+  .product-mobile-purchase { position: fixed; right: 0; bottom: calc(68px + env(safe-area-inset-bottom)); left: 0; z-index: 900; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 15px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #e0e7e2; background: rgba(255,255,255,.96); box-shadow: 0 -5px 24px rgba(30,50,53,.08); backdrop-filter: blur(12px); }
   .product-mobile-purchase > span { color: #183646; font-size: .96rem; font-weight: 750; white-space: nowrap; }
   .product-mobile-purchase small { display: block; margin-top: 2px; color: #829095; font-size: .57rem; font-weight: 450; }
   .product-mobile-purchase button { min-height: 43px; flex: 1; max-width: 220px; border: 1px solid #173a52; border-radius: 3px; background: #163b54; color: #fff; font-size: .73rem; font-weight: 700; }

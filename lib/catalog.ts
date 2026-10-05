@@ -283,6 +283,7 @@ export function slugifyModelName(value: string): string {
 const catalogMemory = new Map<string, unknown>();
 const catalogFetches = new Map<string, Promise<unknown[] | null>>();
 const catalogStoragePrefix = "vini-ro:catalog:v1:";
+const maxCatalogCacheEntryBytes = 1024 * 1024;
 const visibleCatalogSnapshots = new Map<string, { source: unknown; visible: unknown }>();
 let productsSyncSource: Product[] | null = null;
 let productsSyncSnapshot: Product[] = [];
@@ -335,10 +336,30 @@ function readCatalogMemory<T>(key: string, fallback: T): T {
 function updateCatalogMemory<T>(key: string, value: T, notify = true) {
   catalogMemory.set(key, value);
   if (typeof window !== "undefined") {
+    const storageKey = `${catalogStoragePrefix}${key}`;
     try {
-      window.localStorage.setItem(`${catalogStoragePrefix}${key}`, JSON.stringify({ data: value, cachedAt: Date.now() }));
+      const serialized = JSON.stringify({ data: value, cachedAt: Date.now() });
+      if (serialized.length * 2 <= maxCatalogCacheEntryBytes) {
+        try {
+          window.localStorage.setItem(storageKey, serialized);
+        } catch (error) {
+          const isQuotaExceeded = error instanceof DOMException
+            && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
+          if (!isQuotaExceeded) throw error;
+
+          for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+            const existingKey = window.localStorage.key(index);
+            if (existingKey?.startsWith(catalogStoragePrefix)) {
+              window.localStorage.removeItem(existingKey);
+            }
+          }
+          window.localStorage.setItem(storageKey, serialized);
+        }
+      } else {
+        window.localStorage.removeItem(storageKey);
+      }
     } catch (error) {
-      console.error(`Could not persist catalog entry "${key}" for the next visit:`, error);
+      console.warn(`Catalog entry "${key}" remains available for this session but could not be cached locally.`, error);
     }
     window.dispatchEvent(new CustomEvent(notify ? "vini-catalog-updated" : "vini-catalog-refreshed", { detail: { key } }));
   }

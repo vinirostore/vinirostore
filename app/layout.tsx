@@ -4,6 +4,7 @@ import { ShopStateProvider } from "@/components/shop-state";
 import { AuthStateProvider } from "@/components/auth-state";
 import { LoadingFeedback } from "@/components/loading-feedback";
 import { BackToTopButton } from "@/components/back-to-top";
+import { BottomNavigation } from "@/components/bottom-navigation";
 import "./globals.css";
 import "./luxury-theme.css";
 
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <BackToTopButton />
           </ShopStateProvider>
         </AuthStateProvider>
+        <BottomNavigation />
       </body>
     </html>
   );

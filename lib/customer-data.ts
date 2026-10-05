@@ -43,13 +43,26 @@ export type CustomerServiceRequest = {
   created_at: string;
 };
 
+export type CustomerAddress = {
+  id: string;
+  label: string;
+  name?: string;
+  line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+  phone: string;
+  isDefault?: boolean;
+  createdAt?: string;
+};
+
 export type CustomerProfile = {
   full_name: string;
   email: string;
   phone: string | null;
   security_question: string | null;
   security_answer_hash: string | null;
-  addresses: Array<{ id: string; label: string; line1: string; city: string; state: string; pincode: string; phone: string; isDefault?: boolean; createdAt?: string }>;
+  addresses: CustomerAddress[];
   notification_preferences: Record<string, boolean>;
   payment_preferences: { method: string; upiId?: string; cardLabel?: string };
   created_at: string;
@@ -71,8 +84,8 @@ export async function saveCustomerProfile(profile: {
       email: profile.email,
       full_name: profile.fullName,
       phone: profile.phone || null,
-      security_question: profile.securityQuestion || null,
-      security_answer_hash: profile.securityAnswerHash || null,
+      ...(profile.securityQuestion !== undefined ? { security_question: profile.securityQuestion || null } : {}),
+      ...(profile.securityAnswerHash !== undefined ? { security_answer_hash: profile.securityAnswerHash || null } : {}),
     });
 
     return error ? { error: error.message } : {};
@@ -81,21 +94,62 @@ export async function saveCustomerProfile(profile: {
   }
 }
 
+export async function saveCustomerAddresses(userId: string, addresses: CustomerAddress[]) {
+  if (!supabase) return { error: "Database is not configured." };
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ addresses })
+      .eq("id", userId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) return { error: error.message };
+    if (!data) return { error: "Your profile could not be found in Supabase. Reload your account and try again." };
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to save your addresses." };
+  }
+}
+
+export async function getCustomerOrders(userId: string) {
+  if (!supabase) return { orders: [] as CustomerOrder[], error: "Database is not configured." };
+
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id,order_number,status,payment_status,subtotal,gst,shipping,total,created_at,shiprocket_awb_code,shiprocket_courier_name,shiprocket_tracking_url,order_items(id,product_id,product_name,product_slug,product_image,sku,unit_price,quantity,line_total)")
+      .eq("customer_id", userId)
+      .order("created_at", { ascending: false });
+
+    return {
+      orders: (data as CustomerOrder[]) || [],
+      error: error?.message,
+    };
+  } catch (error) {
+    return {
+      orders: [] as CustomerOrder[],
+      error: error instanceof Error ? error.message : "Failed to load your orders.",
+    };
+  }
+}
+
 export async function getCustomerAccount(userId: string) {
   if (!supabase) return { profile: null, orders: [], serviceRequests: [], error: "Database is not configured." };
 
   const [profileResult, ordersResult, requestsResult] = await Promise.all([
     supabase.from("profiles").select("full_name,email,phone,security_question,security_answer_hash,addresses,notification_preferences,payment_preferences,created_at").eq("id", userId).maybeSingle(),
-    supabase.from("orders").select("id,order_number,status,payment_status,subtotal,gst,shipping,total,created_at,shiprocket_awb_code,shiprocket_courier_name,shiprocket_tracking_url,order_items(id,product_id,product_name,product_slug,product_image,sku,unit_price,quantity,line_total)").eq("customer_id", userId).order("created_at", { ascending: false }),
+    getCustomerOrders(userId),
     supabase.from("service_requests").select("id,request_type,subject,message,phone,city,address,qr_value,status,completed_by_name,completed_at,created_at").eq("customer_id", userId).order("created_at", { ascending: false }),
   ]);
 
   const error = profileResult.error || ordersResult.error || requestsResult.error;
   return {
     profile: (profileResult.data as CustomerProfile | null) || null,
-    orders: (ordersResult.data as CustomerOrder[]) || [],
+    orders: ordersResult.orders,
     serviceRequests: (requestsResult.data as CustomerServiceRequest[]) || [],
-    error: error?.message,
+    error: typeof error === "string" ? error : error?.message,
   };
 }
 
