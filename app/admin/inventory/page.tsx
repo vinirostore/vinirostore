@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAccessoryCategoryLabel } from "@/lib/catalog";
 
@@ -27,11 +27,23 @@ export default function AdminInventoryPage() {
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
+  const loadInProgress = useRef(false);
 
   useEffect(() => {
     let active = true;
 
     async function loadInventory() {
+      if (document.visibilityState !== "visible") return;
+      if (loadInProgress.current) return;
+      loadInProgress.current = true;
+      try {
+        await performLoadInventory();
+      } finally {
+        loadInProgress.current = false;
+      }
+    }
+
+    async function performLoadInventory() {
       if (!supabase) {
         if (active) {
           setError("Supabase is not configured.");
@@ -70,12 +82,37 @@ export default function AdminInventoryPage() {
     }
 
     void loadInventory();
-    const interval = window.setInterval(() => void loadInventory(), 30000);
-    window.addEventListener("focus", loadInventory);
+    let interval: number | null = null;
+    const startPolling = () => {
+      if (document.visibilityState === "visible" && interval === null) {
+        interval = window.setInterval(() => void loadInventory(), 30000);
+      }
+    };
+    const stopPolling = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      void loadInventory();
+      startPolling();
+    };
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") void loadInventory();
+    };
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
     return () => {
       active = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", loadInventory);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, []);
 

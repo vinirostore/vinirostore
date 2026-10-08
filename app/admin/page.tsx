@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ADMIN_EMAIL, useAuthState } from "@/components/auth-state";
@@ -26,11 +26,23 @@ export default function AdminOverviewPage() {
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const loadInProgress = useRef(false);
 
   useEffect(() => {
     let active = true;
 
     async function loadOverview() {
+      if (document.visibilityState !== "visible") return;
+      if (loadInProgress.current) return;
+      loadInProgress.current = true;
+      try {
+        await performLoadOverview();
+      } finally {
+        loadInProgress.current = false;
+      }
+    }
+
+    async function performLoadOverview() {
       if (!supabase) {
         if (active) {
           setError("Supabase is not configured.");
@@ -69,12 +81,37 @@ export default function AdminOverviewPage() {
     }
 
     void loadOverview();
-    const interval = window.setInterval(() => void loadOverview(), 30000);
-    window.addEventListener("focus", loadOverview);
+    let interval: number | null = null;
+    const startPolling = () => {
+      if (document.visibilityState === "visible" && interval === null) {
+        interval = window.setInterval(() => void loadOverview(), 30000);
+      }
+    };
+    const stopPolling = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      void loadOverview();
+      startPolling();
+    };
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") void loadOverview();
+    };
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
     return () => {
       active = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", loadOverview);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [refreshKey]);
 

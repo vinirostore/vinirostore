@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthState } from "@/components/auth-state";
 import { useShopState } from "@/components/shop-state";
@@ -47,10 +47,14 @@ export function SiteHeader({ compact = false }: { compact?: boolean } = {}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuScrollPosition = useRef(0);
   const searchCatalogLoad = useRef<Promise<void> | null>(null);
+  const loadSearchCatalogRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const searchCatalogReady = useRef(false);
+  const refreshSearchCatalogAfterLoad = useRef(false);
   const accountHref = isAuthenticated ? "/account" : "/login";
 
-  function loadSearchCatalog() {
+  const loadSearchCatalog = useCallback(() => {
     if (searchCatalogLoad.current) return searchCatalogLoad.current;
+    if (searchCatalogReady.current) return Promise.resolve();
 
     setBrands(getBrandList());
     setModels(getModelList().map(({ id, name, slug, brandId }) => ({ id, name, slug, brandId })));
@@ -78,26 +82,41 @@ export function SiteHeader({ compact = false }: { compact?: boolean } = {}) {
       setSearchCatalogError(failures.length ? "Some live catalog suggestions could not be loaded. The displayed results may be incomplete." : "");
       if (failures.length) console.error("Could not refresh the search catalog:", failures);
       setSearchCatalogLoaded(true);
+      searchCatalogReady.current = failures.length === 0;
     }).catch((error: unknown) => {
       const detail = error instanceof Error ? error.message : "Unknown catalog refresh error.";
       console.error("Could not refresh the search catalog:", detail);
       setSearchCatalogError("Live catalog suggestions are taking too long to load. Results may be incomplete; please retry shortly.");
       setSearchCatalogLoaded(true);
+      searchCatalogReady.current = false;
     }).finally(() => {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       searchCatalogLoad.current = null;
+      if (refreshSearchCatalogAfterLoad.current) {
+        refreshSearchCatalogAfterLoad.current = false;
+        searchCatalogReady.current = false;
+        void loadSearchCatalogRef.current();
+      }
     });
     searchCatalogLoad.current = load;
     return load;
-  }
+  }, []);
 
   useEffect(() => {
-    const handleCatalogChange = () => { void loadSearchCatalog(); };
+    loadSearchCatalogRef.current = loadSearchCatalog;
+    const handleCatalogChange = () => {
+      searchCatalogReady.current = false;
+      if (searchCatalogLoad.current) {
+        refreshSearchCatalogAfterLoad.current = true;
+        return;
+      }
+      void loadSearchCatalog();
+    };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);
     return () => {
       window.removeEventListener("vini-catalog-updated", handleCatalogChange);
     };
-  }, []);
+  }, [loadSearchCatalog]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const brandById = new Map(brands.map((brand) => [brand.id, brand]));

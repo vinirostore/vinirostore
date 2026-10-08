@@ -4,17 +4,21 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { brands as defaultBrands, defaultModels, getBrandList, getBrandListFromStore, getModelList, getModelListFromStore, subscribeToCatalogUpdates } from "@/lib/catalog";
+import { brands as defaultBrands, getBrandList, getBrandListFromStore, getModelCountsByBrandFromStore, getModelList, subscribeToCatalogUpdates } from "@/lib/catalog";
 
 export default function BrandsPage() {
   const brands = useSyncExternalStore(subscribeToCatalogUpdates, getBrandList, () => defaultBrands);
-  const models = useSyncExternalStore(subscribeToCatalogUpdates, getModelList, () => defaultModels);
+  const [modelCounts, setModelCounts] = useState(() => getModelList().reduce<Record<string, number>>((counts, model) => {
+    if (model.status !== "inactive") counts[model.brandId] = (counts[model.brandId] ?? 0) + 1;
+    return counts;
+  }, {}));
   const [catalogError, setCatalogError] = useState("");
 
   useEffect(() => {
     const syncBrands = async () => {
       try {
-        await Promise.all([getBrandListFromStore(), getModelListFromStore()]);
+        const [, nextModelCounts] = await Promise.all([getBrandListFromStore(), getModelCountsByBrandFromStore()]);
+        setModelCounts(nextModelCounts);
         setCatalogError("");
       } catch (error) {
         console.error("Could not refresh the brand catalog:", error);
@@ -44,7 +48,7 @@ export default function BrandsPage() {
         {catalogError ? <p role="alert" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Showing saved brand information. {catalogError}</p> : null}
         {brands.length ? <div className="brand-directory-grid grid grid-cols-1 gap-5 sm:grid-cols-2">
           {brands.map((brand) => {
-            const modelCount = models.filter((model) => model.brandId === brand.id && model.status !== "inactive").length;
+            const modelCount = modelCounts[brand.id] ?? 0;
             return (
               <article key={brand.id} className="brand-directory-card overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
                 <div className="brand-directory-image overflow-hidden bg-slate-50">

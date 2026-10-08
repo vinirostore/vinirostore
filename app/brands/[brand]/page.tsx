@@ -8,11 +8,11 @@ import { SiteHeader } from "@/components/site-header";
 import {
   Brand,
   Product,
-  ProductModel,
+  ProductModelSummary,
   getBrandList,
   getBrandListFromStore,
-  getModelList,
-  getModelListFromStore,
+  getModelSummaryList,
+  getModelSummaryListFromStore,
   getProductsFromStore,
   getProductsFromStoreSync,
 } from "@/lib/catalog";
@@ -22,12 +22,12 @@ export default function BrandDetailPage() {
   const brandSlug = params?.brand ?? "";
   const [brand, setBrand] = useState<Brand | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [catalogModels, setCatalogModels] = useState<ProductModel[]>([]);
+  const [catalogModels, setCatalogModels] = useState<ProductModelSummary[]>([]);
   const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState("");
 
   useEffect(() => {
-    const applyCatalog = (nextBrands: Brand[], nextModels: ProductModel[], nextProducts: Product[], isFinal = false) => {
+    const applyCatalog = (nextBrands: Brand[], nextModels: ProductModelSummary[], nextProducts: Product[], isFinal = false) => {
       const normalizeBrandRoute = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       let decodedBrandRoute = brandSlug;
       try {
@@ -45,7 +45,7 @@ export default function BrandDetailPage() {
 
     const syncBrand = async () => {
       try {
-        const [nextBrands, nextModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelListFromStore(), getProductsFromStore()]);
+        const [nextBrands, nextModels, nextProducts] = await Promise.all([getBrandListFromStore(), getModelSummaryListFromStore(), getProductsFromStore()]);
         applyCatalog(nextBrands, nextModels, nextProducts, true);
         setCatalogError("");
       } catch (error) {
@@ -55,7 +55,7 @@ export default function BrandDetailPage() {
       }
     };
 
-    applyCatalog(getBrandList(), getModelList(), getProductsFromStoreSync());
+    applyCatalog(getBrandList(), getModelSummaryList(), getProductsFromStoreSync());
     void syncBrand();
     const handleCatalogChange = () => { void syncBrand(); };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);

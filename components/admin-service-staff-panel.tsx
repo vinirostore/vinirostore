@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type TechnicianAccount = {
@@ -20,8 +20,12 @@ export function AdminServiceStaffPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState("");
   const [error, setError] = useState("");
+  const loadInProgress = useRef<Promise<void> | null>(null);
 
-  const loadStaff = useCallback(async () => {
+  const loadStaff = useCallback(() => {
+    if (document.visibilityState !== "visible") return Promise.resolve();
+    if (loadInProgress.current) return loadInProgress.current;
+    const request = (async () => {
     if (!supabase) {
       setError("Supabase is not configured.");
       setIsLoading(false);
@@ -44,14 +48,41 @@ export function AdminServiceStaffPanel() {
     } finally {
       setIsLoading(false);
     }
+    })();
+    loadInProgress.current = request.finally(() => {
+      loadInProgress.current = null;
+    });
+    return loadInProgress.current;
   }, []);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void loadStaff(), 0);
-    const interval = window.setInterval(() => void loadStaff(), 30000);
+    let interval: number | null = null;
+    const startPolling = () => {
+      if (document.visibilityState === "visible" && interval === null) {
+        interval = window.setInterval(() => void loadStaff(), 30000);
+      }
+    };
+    const stopPolling = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      void loadStaff();
+      startPolling();
+    };
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.clearTimeout(initialLoad);
-      window.clearInterval(interval);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [loadStaff]);
 
