@@ -30,6 +30,8 @@ export type ProductModel = {
   updatedAt?: string;
 };
 
+export type ProductModelSummary = Pick<ProductModel, "id" | "name" | "slug" | "brandId" | "description" | "image" | "price" | "status">;
+
 export type Accessory = {
   id: string;
   name: string;
@@ -282,6 +284,7 @@ export function slugifyModelName(value: string): string {
 
 const catalogMemory = new Map<string, unknown>();
 const catalogFetches = new Map<string, Promise<unknown[] | null>>();
+const modelByIdFetches = new Map<string, Promise<ProductModel | undefined>>();
 const catalogStoragePrefix = "vini-ro:catalog:v1:";
 const maxCatalogCacheEntryBytes = 1024 * 1024;
 const visibleCatalogSnapshots = new Map<string, { source: unknown; visible: unknown }>();
@@ -453,29 +456,86 @@ export function getModelList(): ProductModel[] {
 export async function getModelListFromStore(): Promise<ProductModel[]> {
   const remote = await fetchSupabaseCatalog<ProductModel>("models");
   if (remote !== null) {
-    const normalized = remote.map((model) => {
-    const row = model as ProductModel & { brand_id?: string; color_name?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
-    const storedColors = Array.isArray(model.colors) ? model.colors : [];
-    const primaryColor = storedColors.find((color) => color.isPrimary);
-    return {
-      ...model,
-      brandId: model.brandId ?? row.brand_id,
-      colorName: model.colorName ?? row.color_name ?? primaryColor?.name ?? "",
-      inventory: Number(row.inventory ?? 0),
-      colors: storedColors.filter((color) => !color.isPrimary).map((color) => ({
-        ...color,
-        price: color.price === undefined ? undefined : Number(color.price),
-      })),
-      newArrival: model.newArrival ?? row.new_arrival ?? false,
-      bestSeller: model.bestSeller ?? row.best_seller ?? false,
-      createdAt: model.createdAt ?? row.created_at,
-      updatedAt: model.updatedAt ?? row.updated_at,
-    };
-    });
+    const normalized = remote.map(normalizeModel);
     updateCatalogMemory("vini-models", normalized, false);
     return normalized.filter((model) => model.status !== "inactive");
   }
   return getModelList();
+}
+
+function normalizeModel(model: ProductModel): ProductModel {
+  const row = model as ProductModel & { brand_id?: string; color_name?: string; created_at?: string; updated_at?: string; new_arrival?: boolean; best_seller?: boolean };
+  const storedColors = Array.isArray(model.colors) ? model.colors : [];
+  const primaryColor = storedColors.find((color) => color.isPrimary);
+  return {
+    ...model,
+    brandId: model.brandId ?? row.brand_id,
+    colorName: model.colorName ?? row.color_name ?? primaryColor?.name ?? "",
+    inventory: Number(row.inventory ?? 0),
+    colors: storedColors.filter((color) => !color.isPrimary).map((color) => ({
+      ...color,
+      price: color.price === undefined ? undefined : Number(color.price),
+    })),
+    newArrival: model.newArrival ?? row.new_arrival ?? false,
+    bestSeller: model.bestSeller ?? row.best_seller ?? false,
+    createdAt: model.createdAt ?? row.created_at,
+    updatedAt: model.updatedAt ?? row.updated_at,
+  };
+}
+
+export function getModelSummaryList(): ProductModelSummary[] {
+  return getModelList().map(toModelSummary);
+}
+
+export async function getModelSummaryListFromStore(): Promise<ProductModelSummary[]> {
+  type ModelSummaryRow = Omit<ProductModelSummary, "brandId"> & { brand_id: string };
+  const remote = await fetchSupabaseCatalog<ModelSummaryRow>(
+    "models",
+    "id,name,slug,brand_id,description,image,price,status",
+  );
+  if (remote !== null) {
+    return remote
+      .filter((model) => model.status !== "inactive")
+      .map(({ brand_id, ...model }) => ({ ...model, brandId: brand_id }));
+  }
+  return getModelSummaryList().filter((model) => model.status !== "inactive");
+}
+
+export async function getModelCountsByBrandFromStore(): Promise<Record<string, number>> {
+  type ModelCountRow = { brand_id: string; status: string };
+  const remote = await fetchSupabaseCatalog<ModelCountRow>("models", "brand_id,status");
+  const models = remote ?? getModelList().map((model) => ({ brand_id: model.brandId, status: model.status }));
+  return models.reduce<Record<string, number>>((counts, model) => {
+    if (model.status !== "inactive") counts[model.brand_id] = (counts[model.brand_id] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+export async function getModelByIdFromStore(id: string): Promise<ProductModel | undefined> {
+  if (!hasSupabaseConfig()) return getModelList().find((model) => model.id === id);
+
+  const existingRequest = modelByIdFetches.get(id);
+  if (existingRequest) return existingRequest;
+
+  const request = (async () => {
+    const { supabase } = await import("@/lib/supabase");
+    if (!supabase) return getModelList().find((model) => model.id === id);
+    const { data, error } = await supabase.from("models").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`Could not load model from Supabase: ${error.message}`);
+    const model = data ? normalizeModel(data as ProductModel) : undefined;
+    return model?.status !== "inactive" ? model : undefined;
+  })();
+  modelByIdFetches.set(id, request);
+  try {
+    return await request;
+  } finally {
+    if (modelByIdFetches.get(id) === request) modelByIdFetches.delete(id);
+  }
+}
+
+function toModelSummary(model: ProductModel): ProductModelSummary {
+  const { id, name, slug, brandId, description, image, price, status } = model;
+  return { id, name, slug, brandId, description, image, price, status };
 }
 
 export function getModelBySlug(slug: string): ProductModel | undefined {

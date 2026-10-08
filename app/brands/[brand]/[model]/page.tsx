@@ -10,10 +10,13 @@ import {
   type Brand,
   type Product,
   type ProductModel,
+  type ProductModelSummary,
   getBrandList,
   getBrandListFromStore,
   getModelList,
-  getModelListFromStore,
+  getModelByIdFromStore,
+  getModelSummaryList,
+  getModelSummaryListFromStore,
   getProductsFromStoreSync,
   getProductsFromStore,
 } from "@/lib/catalog";
@@ -38,13 +41,35 @@ function formatModelSlug(value: string) {
   }
 }
 
+function findBrandForRoute(brands: Brand[], brandSlug: string) {
+  const normalizedBrandSlug = normalizeRouteSlug(brandSlug);
+  return brands.find((item) =>
+    item.id === brandSlug
+    || normalizeRouteSlug(item.id) === normalizedBrandSlug
+    || item.slug === brandSlug
+    || normalizeRouteSlug(item.slug) === normalizedBrandSlug
+    || normalizeRouteSlug(item.name) === normalizedBrandSlug,
+  ) ?? null;
+}
+
+function findModelForRoute(models: ProductModelSummary[], modelSlug: string) {
+  const normalizedModelSlug = normalizeRouteSlug(modelSlug);
+  return models.find((item) =>
+    item.id === modelSlug
+    || normalizeRouteSlug(item.id) === normalizedModelSlug
+    || item.slug === modelSlug
+    || normalizeRouteSlug(item.slug) === normalizedModelSlug
+    || normalizeRouteSlug(item.name) === normalizedModelSlug,
+  ) ?? null;
+}
+
 export default function BrandModelDetailPage() {
   const params = useParams<{ brand: string; model: string }>();
   const brandSlug = params?.brand ?? "";
   const modelSlug = params?.model ?? "";
   const [brand, setBrand] = useState<Brand | null>(null);
   const [model, setModel] = useState<ProductModel | null>(null);
-  const [models, setModels] = useState<ProductModel[]>([]);
+  const [models, setModels] = useState<ProductModelSummary[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
@@ -59,11 +84,15 @@ export default function BrandModelDetailPage() {
       try {
         const [nextBrands, allModels, nextProducts] = await Promise.all([
           getBrandListFromStore(),
-          getModelListFromStore(),
+          getModelSummaryListFromStore(),
           getProductsFromStore(),
         ]);
+        const nextBrand = findBrandForRoute(nextBrands, brandSlug);
+        const nextModels = nextBrand ? allModels.filter((item) => item.brandId === nextBrand.id) : [];
+        const modelSummary = findModelForRoute(nextModels, modelSlug);
+        const selectedModel = modelSummary ? await getModelByIdFromStore(modelSummary.id) : undefined;
         if (!active) return;
-        applyCatalog(nextBrands, allModels, nextProducts);
+        applyCatalog(nextBrands, allModels, nextProducts, selectedModel);
         setCatalogError("");
       } catch (error) {
         if (!active) return;
@@ -72,25 +101,12 @@ export default function BrandModelDetailPage() {
       }
     };
 
-    const applyCatalog = (nextBrands: Brand[], allModels: ProductModel[], nextProducts: Product[], isFinal = false) => {
+    const applyCatalog = (nextBrands: Brand[], allModels: ProductModelSummary[], nextProducts: Product[], selectedModel?: ProductModel, isFinal = false) => {
       if (!active) return;
-      const normalizedBrandSlug = normalizeRouteSlug(brandSlug);
-      const normalizedModelSlug = normalizeRouteSlug(modelSlug);
-      const nextBrand = nextBrands.find((item) =>
-        item.id === brandSlug
-        || normalizeRouteSlug(item.id) === normalizedBrandSlug
-        || item.slug === brandSlug
-        || normalizeRouteSlug(item.slug) === normalizedBrandSlug
-        || normalizeRouteSlug(item.name) === normalizedBrandSlug,
-      ) ?? null;
+      const nextBrand = findBrandForRoute(nextBrands, brandSlug);
       const nextModels = nextBrand ? allModels.filter((item) => item.brandId === nextBrand.id) : [];
-      const nextModel = nextModels.find((item) =>
-        item.id === modelSlug
-        || normalizeRouteSlug(item.id) === normalizedModelSlug
-        || item.slug === modelSlug
-        || normalizeRouteSlug(item.slug) === normalizedModelSlug
-        || normalizeRouteSlug(item.name) === normalizedModelSlug,
-      ) ?? null;
+      const modelSummary = findModelForRoute(nextModels, modelSlug);
+      const nextModel = selectedModel && selectedModel.id === modelSummary?.id ? selectedModel : null;
 
       setBrand(nextBrand);
       setModel(nextModel);
@@ -100,7 +116,18 @@ export default function BrandModelDetailPage() {
       if (nextBrand && nextModel || isFinal) setHasLoadedCatalog(true);
     };
 
-    applyCatalog(getBrandList(), getModelList(), getProductsFromStoreSync());
+    const initialBrands = getBrandList();
+    const initialModels = getModelList();
+    const initialBrand = findBrandForRoute(initialBrands, brandSlug);
+    const initialBrandModels = initialBrand ? initialModels.filter((item) => item.brandId === initialBrand.id) : [];
+    const initialModelSummary = findModelForRoute(initialBrandModels, modelSlug);
+    const initialModel = initialModels.find((item) => item.id === initialModelSummary?.id);
+    applyCatalog(
+      initialBrands,
+      getModelSummaryList(),
+      getProductsFromStoreSync(),
+      initialModel,
+    );
     void syncCatalog().then(() => setHasLoadedCatalog(true));
     const handleCatalogChange = () => { void syncCatalog(); };
     window.addEventListener("vini-catalog-updated", handleCatalogChange);

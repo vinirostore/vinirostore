@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export type ServiceRequestStatus = "open" | "in_progress" | "completed" | "cancelled";
@@ -42,10 +42,21 @@ export function AdminServiceRequestsPanel({ requestType, statusFilter }: { reque
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const loadInProgress = useRef(false);
 
   useEffect(() => {
     let active = true;
     async function loadRequests() {
+      if (document.visibilityState !== "visible") return;
+      if (loadInProgress.current) return;
+      loadInProgress.current = true;
+      try {
+        await performLoadRequests();
+      } finally {
+        loadInProgress.current = false;
+      }
+    }
+    async function performLoadRequests() {
       if (!supabase) {
         if (active) {
           setError("Supabase is not configured.");
@@ -81,12 +92,37 @@ export function AdminServiceRequestsPanel({ requestType, statusFilter }: { reque
       }
     }
     void loadRequests();
-    const interval = window.setInterval(() => void loadRequests(), 30000);
-    window.addEventListener("focus", loadRequests);
+    let interval: number | null = null;
+    const startPolling = () => {
+      if (document.visibilityState === "visible" && interval === null) {
+        interval = window.setInterval(() => void loadRequests(), 30000);
+      }
+    };
+    const stopPolling = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      void loadRequests();
+      startPolling();
+    };
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") void loadRequests();
+    };
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
     return () => {
       active = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", loadRequests);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [refreshKey]);
 

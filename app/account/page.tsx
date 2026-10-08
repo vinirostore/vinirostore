@@ -100,18 +100,54 @@ export default function AccountPage() {
   useEffect(() => {
     const accountUserId = user?.id ?? "";
     if (!accountUserId) return;
-    const refreshAccount = () => void getCustomerAccount(accountUserId).then((result) => {
-      setCustomerProfile(result.profile);
-      setOrders(result.orders);
-      setServiceRequests(result.serviceRequests);
-      setDataError(result.error || "");
-    });
-    refreshAccount();
-    const interval = window.setInterval(refreshAccount, 15000);
-    window.addEventListener("focus", refreshAccount);
+    let active = true;
+    let requestInProgress = false;
+    let interval: number | null = null;
+    const refreshAccount = async () => {
+      if (document.visibilityState !== "visible" || requestInProgress) return;
+      requestInProgress = true;
+      try {
+        const result = await getCustomerAccount(accountUserId);
+        if (!active) return;
+        setCustomerProfile(result.profile);
+        setOrders(result.orders);
+        setServiceRequests(result.serviceRequests);
+        setDataError(result.error || "");
+      } finally {
+        requestInProgress = false;
+      }
+    };
+    const startPolling = () => {
+      if (document.visibilityState === "visible" && interval === null) {
+        interval = window.setInterval(() => void refreshAccount(), 15000);
+      }
+    };
+    const stopPolling = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      void refreshAccount();
+      startPolling();
+    };
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") void refreshAccount();
+    };
+    void refreshAccount();
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
     return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshAccount);
+      active = false;
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [user?.id]);
 

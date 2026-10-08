@@ -20,26 +20,57 @@ export function ServiceBookingForm({ serviceName, requestType, returnTo }: { ser
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [whatsappLink, setWhatsappLink] = useState("");
+  const bookingQrValue = booking?.qr_value;
+  const bookingStatus = booking?.status;
 
   useEffect(() => {
-    if (!booking || booking.status === "completed" || booking.status === "cancelled") return;
+    if (!bookingQrValue || bookingStatus === "completed" || bookingStatus === "cancelled") return;
     let active = true;
+    let requestInProgress = false;
+    let interval: number | null = null;
     const refreshStatus = async () => {
+      if (document.visibilityState !== "visible" || requestInProgress) return;
+      requestInProgress = true;
       try {
-        const response = await fetch(`/api/service-requests?qrValue=${encodeURIComponent(booking.qr_value)}`, { cache: "no-store" });
+        const response = await fetch(`/api/service-requests?qrValue=${encodeURIComponent(bookingQrValue)}`, { cache: "no-store" });
         if (!response.ok) return;
         const result = await response.json() as { request?: Partial<ServiceBooking> };
-        if (active && result.request?.status) setBooking((current) => current ? { ...current, status: result.request!.status! } : current);
+        if (active && result.request?.status) setBooking((current) => current && current.status !== result.request!.status
+          ? { ...current, status: result.request!.status! }
+          : current);
       } catch {
         // Keep the last known booking status if the connection is temporarily unavailable.
+      } finally {
+        requestInProgress = false;
       }
     };
-    const interval = window.setInterval(() => void refreshStatus(), 10000);
+    const startPolling = () => {
+      if (document.visibilityState === "visible" && interval === null) {
+        interval = window.setInterval(() => void refreshStatus(), 10000);
+      }
+    };
+    const stopPolling = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      void refreshStatus();
+      startPolling();
+    };
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [booking]);
+  }, [bookingQrValue, bookingStatus]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

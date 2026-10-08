@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { ProductDetailExperience, type ProductDetailRecommendation } from "@/components/product-detail-experience";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { getBrandListFromStore, getModelListFromStore, getProductsFromStore, getProductBySlugFromStore } from "@/lib/catalog";
+import { getBrandListFromStore, getModelSummaryListFromStore, getProductsFromStore, getProductBySlugFromStore } from "@/lib/catalog";
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -10,7 +10,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     getProductBySlugFromStore(slug),
     getProductsFromStore(),
     getBrandListFromStore(),
-    getModelListFromStore(),
+    getModelSummaryListFromStore(),
   ]);
   if (!product) notFound();
 
