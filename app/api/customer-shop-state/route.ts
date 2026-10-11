@@ -97,7 +97,7 @@ export async function PUT(request: Request) {
       ...(!user ? { expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() } : {}),
     }, { onConflict: user ? "customer_id" : "guest_id" });
     if (error) return jsonError(`Could not save your cart and wishlist: ${error.message}`, 503);
-    if (user) {
+    if (user && guestIdPattern.test(guestId)) {
       const { error: clearGuestError } = await supabase.from("guest_shop_state").delete().eq("guest_id", guestId);
       if (clearGuestError) return jsonError(`Shopping data was saved to your account, but the temporary guest copy could not be cleared: ${clearGuestError.message}`, 503);
     }
