@@ -239,6 +239,11 @@ export default function RegisterPage() {
           <p className="mt-5 text-sm text-slate-600">
             Already have an account? <Link href="/login" onClick={(event) => { event.preventDefault(); router.push(`/login?returnTo=${encodeURIComponent(getAuthReturnPath())}`); }} className="font-medium text-sky-700">Login</Link>
           </p>
+          {!awaitingOtp ? (
+            <Link href="/service-portal" className="mt-4 flex w-full justify-center rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
+              Create account as a technician
+            </Link>
+          ) : null}
         </div>
       </main>
       <SiteFooter />
